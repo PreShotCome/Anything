@@ -1,28 +1,49 @@
 const els = {
   source: document.getElementById('source'),
-  interval: document.getElementById('interval'),
   refresh: document.getElementById('refresh'),
-  toggle: document.getElementById('toggle'),
+  video: document.getElementById('video'),
+  regionBox: document.getElementById('regionBox'),
+  selectionLayer: document.getElementById('selectionLayer'),
+  clearRegion: document.getElementById('clearRegion'),
+  regionLabel: document.getElementById('regionLabel'),
+  record: document.getElementById('record'),
+  timer: document.getElementById('timer'),
+  aiToggle: document.getElementById('aiToggle'),
+  aiInterval: document.getElementById('aiInterval'),
   status: document.getElementById('status'),
   summary: document.getElementById('summary'),
   reminders: document.getElementById('reminders'),
   timeline: document.getElementById('timeline'),
   cost: document.getElementById('cost'),
-  video: document.getElementById('video'),
 };
 
 // Haiku 4.5 pricing, USD per 1M tokens.
 const PRICE_IN = 1.0;
 const PRICE_OUT = 5.0;
-// Below this mean per-channel pixel difference (0-255), the window counts as unchanged.
+// Below this mean per-channel pixel difference (0-255), the frame counts as unchanged.
 const CHANGE_THRESHOLD = 4;
 const MAX_TIMELINE_ITEMS = 50;
+const RECORD_FPS = 30;
 
-let stream = null;
-let timer = null;
+let previewStream = null;
+let region = null; // { x, y, w, h } in source pixels, or null for the whole source
+
+let recording = false;
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordMime = '';
+let recordStartTime = 0;
+let recordTimerId = null;
+
+let regionCanvas = null;
+let regionCtx = null;
+let drawRaf = null;
+
+let aiWasOn = false;
+let aiTimerId = null;
 let analyzing = false;
-let running = false;
 let prevSignature = null;
+let sessionSummaries = [];
 let sessionCost = 0;
 const seenReminders = new Set();
 
@@ -42,6 +63,14 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+function formatTime(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// --- Sources & preview -----------------------------------------------------
+
 async function loadSources() {
   const sources = await window.api.getCaptureSources();
   els.source.innerHTML = '';
@@ -51,35 +80,255 @@ async function loadSources() {
     opt.textContent = `${s.kind === 'screen' ? '[Screen] ' : ''}${s.name}`;
     els.source.appendChild(opt);
   }
+  if (els.source.value) await startPreview(els.source.value);
 }
 
-async function startStream(sourceId) {
-  stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: {
-      mandatory: {
-        chromeMediaSource: 'desktop',
-        chromeMediaSourceId: sourceId,
-        maxWidth: 1920,
-        maxHeight: 1080,
+async function startPreview(sourceId) {
+  stopPreview();
+  clearRegion();
+  try {
+    previewStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        mandatory: {
+          chromeMediaSource: 'desktop',
+          chromeMediaSourceId: sourceId,
+          maxWidth: 1920,
+          maxHeight: 1080,
+        },
       },
-    },
-  });
-  els.video.srcObject = stream;
-  await els.video.play();
+    });
+    els.video.srcObject = previewStream;
+    await els.video.play();
+    els.record.disabled = false;
+    setStatus('Ready. Drag a region if you want, then start recording.');
+  } catch (err) {
+    els.record.disabled = true;
+    setStatus(`Could not capture that source: ${err.message}`, true);
+  }
 }
 
-function stopStream() {
-  if (stream) {
-    stream.getTracks().forEach((t) => t.stop());
-    stream = null;
+function stopPreview() {
+  if (previewStream) {
+    previewStream.getTracks().forEach((t) => t.stop());
+    previewStream = null;
   }
   els.video.srcObject = null;
 }
 
+// --- Region selection ------------------------------------------------------
+
+let dragStart = null;
+
+function clearRegion() {
+  region = null;
+  els.regionBox.classList.add('hidden');
+  els.regionLabel.textContent = '';
+}
+
+function onPointerDown(event) {
+  if (recording || !previewStream) return;
+  const rect = els.video.getBoundingClientRect();
+  dragStart = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
+function onPointerMove(event) {
+  if (!dragStart) return;
+  const rect = els.video.getBoundingClientRect();
+  const cx = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
+  const cy = Math.min(Math.max(event.clientY - rect.top, 0), rect.height);
+  const left = Math.min(dragStart.x, cx);
+  const top = Math.min(dragStart.y, cy);
+  const w = Math.abs(cx - dragStart.x);
+  const h = Math.abs(cy - dragStart.y);
+  els.regionBox.classList.remove('hidden');
+  els.regionBox.style.left = `${left}px`;
+  els.regionBox.style.top = `${top}px`;
+  els.regionBox.style.width = `${w}px`;
+  els.regionBox.style.height = `${h}px`;
+}
+
+function onPointerUp(event) {
+  if (!dragStart) return;
+  const rect = els.video.getBoundingClientRect();
+  const cx = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
+  const cy = Math.min(Math.max(event.clientY - rect.top, 0), rect.height);
+  const left = Math.min(dragStart.x, cx);
+  const top = Math.min(dragStart.y, cy);
+  const w = Math.abs(cx - dragStart.x);
+  const h = Math.abs(cy - dragStart.y);
+  dragStart = null;
+
+  if (w < 12 || h < 12) {
+    clearRegion();
+    return;
+  }
+  const scaleX = els.video.videoWidth / rect.width;
+  const scaleY = els.video.videoHeight / rect.height;
+  region = {
+    x: Math.round(left * scaleX),
+    y: Math.round(top * scaleY),
+    w: Math.max(2, Math.round(w * scaleX)),
+    h: Math.max(2, Math.round(h * scaleY)),
+  };
+  els.regionLabel.textContent = `Region: ${region.w}×${region.h}px`;
+}
+
+function currentRect() {
+  if (region) return region;
+  return { x: 0, y: 0, w: els.video.videoWidth, h: els.video.videoHeight };
+}
+
+// --- Recording -------------------------------------------------------------
+
+function pickMime() {
+  const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  return candidates.find((c) => MediaRecorder.isTypeSupported(c)) || '';
+}
+
+function regionDrawLoop() {
+  if (!recording || !region) return;
+  regionCtx.drawImage(
+    els.video,
+    region.x, region.y, region.w, region.h,
+    0, 0, regionCanvas.width, regionCanvas.height,
+  );
+  drawRaf = requestAnimationFrame(regionDrawLoop);
+}
+
+function tickTimer() {
+  const elapsed = Math.floor((Date.now() - recordStartTime) / 1000);
+  els.timer.textContent = formatTime(elapsed);
+}
+
+function startRecording() {
+  if (!previewStream || recording) return;
+
+  let recordStream;
+  if (region) {
+    regionCanvas = document.createElement('canvas');
+    regionCanvas.width = region.w;
+    regionCanvas.height = region.h;
+    regionCtx = regionCanvas.getContext('2d');
+    recordStream = regionCanvas.captureStream(RECORD_FPS);
+  } else {
+    recordStream = previewStream;
+  }
+
+  recordMime = pickMime();
+  try {
+    mediaRecorder = new MediaRecorder(recordStream, recordMime ? { mimeType: recordMime } : {});
+  } catch (err) {
+    setStatus(`Could not start recorder: ${err.message}`, true);
+    return;
+  }
+
+  recordedChunks = [];
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+  };
+  mediaRecorder.onstop = finalizeRecording;
+
+  recording = true;
+  if (region) regionDrawLoop();
+  mediaRecorder.start(1000);
+
+  recordStartTime = Date.now();
+  els.timer.textContent = '00:00';
+  els.timer.classList.add('running');
+  recordTimerId = setInterval(tickTimer, 1000);
+
+  aiWasOn = els.aiToggle.checked;
+  if (aiWasOn) {
+    sessionSummaries = [];
+    seenReminders.clear();
+    prevSignature = null;
+    const intervalMs = Math.max(10, Number(els.aiInterval.value) || 30) * 1000;
+    setTimeout(aiTick, 1500);
+    aiTimerId = setInterval(aiTick, intervalMs);
+  }
+
+  els.record.textContent = 'Stop recording';
+  els.record.classList.add('running');
+  els.source.disabled = true;
+  els.refresh.disabled = true;
+  els.clearRegion.disabled = true;
+  els.aiToggle.disabled = true;
+  els.aiInterval.disabled = true;
+  els.selectionLayer.classList.add('locked');
+  setStatus(region ? 'Recording region…' : 'Recording…');
+}
+
+function stopRecording() {
+  if (!recording) return;
+  recording = false;
+
+  if (recordTimerId) clearInterval(recordTimerId);
+  recordTimerId = null;
+  if (aiTimerId) clearInterval(aiTimerId);
+  aiTimerId = null;
+  if (drawRaf) cancelAnimationFrame(drawRaf);
+  drawRaf = null;
+
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+}
+
+async function finalizeRecording() {
+  const blob = new Blob(recordedChunks, { type: recordMime || 'video/webm' });
+  recordedChunks = [];
+  regionCanvas = null;
+  regionCtx = null;
+
+  setStatus('Saving recording…');
+  try {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const res = await window.api.saveRecording(bytes);
+    if (res.ok) {
+      setStatus(`Saved to ${res.path}`);
+    } else if (res.canceled) {
+      setStatus('Recording discarded (save canceled).');
+    } else {
+      setStatus(`Could not save: ${res.error || 'unknown error'}`, true);
+    }
+  } catch (err) {
+    setStatus(`Could not save: ${err.message}`, true);
+  }
+
+  if (aiWasOn && sessionSummaries.length > 0) {
+    const roll = await window.api.summarizeSession(sessionSummaries);
+    if (roll.ok) {
+      els.summary.textContent = roll.summary;
+      addCost(roll.usage);
+      for (const reminder of roll.reminders) addReminder(reminder);
+    }
+  }
+
+  els.timer.classList.remove('running');
+  els.record.textContent = 'Start recording';
+  els.record.classList.remove('running');
+  els.source.disabled = false;
+  els.refresh.disabled = false;
+  els.clearRegion.disabled = false;
+  els.aiToggle.disabled = false;
+  els.aiInterval.disabled = false;
+  els.selectionLayer.classList.remove('locked');
+}
+
+function toggleRecording() {
+  if (els.record.disabled) return;
+  if (recording) stopRecording();
+  else startRecording();
+}
+
+// --- AI analysis -----------------------------------------------------------
+
 function computeSignature() {
+  const r = currentRect();
+  if (!r.w || !r.h) return null;
   const ctx = diffCanvas.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(els.video, 0, 0, 32, 32);
+  ctx.drawImage(els.video, r.x, r.y, r.w, r.h, 0, 0, 32, 32);
   return ctx.getImageData(0, 0, 32, 32).data;
 }
 
@@ -92,16 +341,15 @@ function changeAmount(a, b) {
   return sum / ((a.length / 4) * 3);
 }
 
-// Captures the current frame as a width-capped JPEG to keep token cost low.
-function grabScreenshot() {
-  const vw = els.video.videoWidth;
-  const vh = els.video.videoHeight;
-  if (!vw || !vh) return null;
-  const scale = Math.min(1, 1280 / vw);
-  captureCanvas.width = Math.round(vw * scale);
-  captureCanvas.height = Math.round(vh * scale);
+// Captures the recorded area as a width-capped JPEG to keep token cost low.
+function grabFrame() {
+  const r = currentRect();
+  if (!r.w || !r.h) return null;
+  const scale = Math.min(1, 1280 / r.w);
+  captureCanvas.width = Math.round(r.w * scale);
+  captureCanvas.height = Math.round(r.h * scale);
   const ctx = captureCanvas.getContext('2d');
-  ctx.drawImage(els.video, 0, 0, captureCanvas.width, captureCanvas.height);
+  ctx.drawImage(els.video, r.x, r.y, r.w, r.h, 0, 0, captureCanvas.width, captureCanvas.height);
   return captureCanvas.toDataURL('image/jpeg', 0.6).split(',')[1];
 }
 
@@ -134,7 +382,7 @@ function addReminder(reminder) {
   }
 }
 
-function renderResult(result) {
+function renderFrameResult(result) {
   els.summary.textContent = result.summary;
 
   const item = document.createElement('div');
@@ -148,76 +396,54 @@ function renderResult(result) {
   for (const reminder of result.reminders) addReminder(reminder);
 }
 
-async function tick() {
-  if (analyzing || !stream) return;
+async function aiTick() {
+  if (analyzing || !recording || !previewStream) return;
 
   const signature = computeSignature();
   if (changeAmount(prevSignature, signature) < CHANGE_THRESHOLD) {
-    setStatus('Monitoring — window unchanged, skipped (no cost).');
+    setStatus('Recording — frame unchanged, skipped AI (no cost).');
     return;
   }
   prevSignature = signature;
 
-  const imageBase64 = grabScreenshot();
-  if (!imageBase64) return;
+  const frame = grabFrame();
+  if (!frame) return;
 
   analyzing = true;
-  setStatus('Analyzing window…');
+  setStatus('Recording — analyzing frame…');
   try {
-    const result = await window.api.analyzeScreen(imageBase64);
+    const result = await window.api.analyzeScreen(frame);
     if (!result.ok) {
-      setStatus(`Error: ${result.error}`, true);
+      setStatus(`Recording — AI error: ${result.error}`, true);
     } else {
-      renderResult(result);
+      sessionSummaries.push(result.summary);
+      renderFrameResult(result);
       addCost(result.usage);
-      setStatus(`Monitoring — last analyzed ${new Date().toLocaleTimeString()}.`);
+      setStatus('Recording…');
     }
   } catch (err) {
-    setStatus(`Error: ${err.message}`, true);
+    setStatus(`Recording — AI error: ${err.message}`, true);
   } finally {
     analyzing = false;
   }
 }
 
-async function start() {
-  const sourceId = els.source.value;
-  if (!sourceId) {
-    setStatus('Pick a window first.', true);
-    return;
-  }
-  try {
-    await startStream(sourceId);
-  } catch (err) {
-    setStatus(`Could not capture that window: ${err.message}`, true);
-    return;
-  }
+// --- Wiring ----------------------------------------------------------------
 
-  running = true;
-  prevSignature = null;
-  els.toggle.textContent = 'Stop';
-  els.toggle.classList.add('running');
-  els.source.disabled = true;
-  els.interval.disabled = true;
-  setStatus('Monitoring started…');
-
-  const intervalMs = Math.max(10, Number(els.interval.value) || 30) * 1000;
-  setTimeout(tick, 1500);
-  timer = setInterval(tick, intervalMs);
-}
-
-function stop() {
-  running = false;
-  if (timer) clearInterval(timer);
-  timer = null;
-  stopStream();
-  els.toggle.textContent = 'Start';
-  els.toggle.classList.remove('running');
-  els.source.disabled = false;
-  els.interval.disabled = false;
-  setStatus('Stopped.');
-}
-
-els.toggle.addEventListener('click', () => (running ? stop() : start()));
+els.source.addEventListener('change', () => startPreview(els.source.value));
 els.refresh.addEventListener('click', loadSources);
+els.clearRegion.addEventListener('click', () => {
+  if (!recording) clearRegion();
+});
+els.record.addEventListener('click', toggleRecording);
 
-loadSources().catch((err) => setStatus(`Could not list windows: ${err.message}`, true));
+els.selectionLayer.addEventListener('pointerdown', onPointerDown);
+window.addEventListener('pointermove', onPointerMove);
+window.addEventListener('pointerup', onPointerUp);
+
+window.api.onHotkeyToggle(toggleRecording);
+window.api.onHotkeyFailed(() => {
+  setStatus('Global hotkey unavailable (in use by another app). Use the button instead.', true);
+});
+
+loadSources().catch((err) => setStatus(`Could not list sources: ${err.message}`, true));

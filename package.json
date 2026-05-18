@@ -1,7 +1,7 @@
 {
   "name": "screen-dissector",
-  "version": "0.1.0",
-  "description": "Continuously monitors your screen and uses Claude to summarize what is on it and surface reminders.",
+  "version": "0.2.0",
+  "description": "A PC screen recorder: capture a window, screen, or custom region to video, with an optional Claude-powered summary of what happened.",
   "main": "src/main.js",
   "scripts": {
     "start": "electron ."

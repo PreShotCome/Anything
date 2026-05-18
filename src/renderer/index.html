@@ -2,36 +2,58 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:;"
+    />
     <title>Screen Dissector</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header>
       <h1>Screen Dissector</h1>
-      <p class="tagline">Watches one window and tells you what it sees.</p>
+      <p class="tagline">Record a window, screen, or region — with an optional AI recap.</p>
     </header>
 
     <section class="controls">
       <label>
-        Window to watch
+        Source
         <select id="source"></select>
       </label>
+      <button id="refresh" type="button">Refresh list</button>
+    </section>
+
+    <section class="preview-wrap">
+      <video id="video" muted></video>
+      <div id="regionBox" class="region-box hidden"></div>
+      <div id="selectionLayer" class="selection-layer"></div>
+    </section>
+    <p class="hint">
+      Drag on the preview to record just a region.
+      <button id="clearRegion" type="button" class="link">Clear region</button>
+      <span id="regionLabel"></span>
+    </p>
+
+    <section class="record-row">
+      <button id="record" type="button" class="primary" disabled>Start recording</button>
+      <span id="timer" class="timer">00:00</span>
+      <label class="checkbox">
+        <input id="aiToggle" type="checkbox" checked />
+        AI recap
+      </label>
       <label>
-        Check every
+        Sample every
         <span class="interval-wrap">
-          <input id="interval" type="number" min="10" max="600" value="30" />
+          <input id="aiInterval" type="number" min="10" max="600" value="30" />
           <span>sec</span>
         </span>
       </label>
-      <button id="refresh" type="button">Refresh list</button>
-      <button id="toggle" type="button" class="primary">Start</button>
     </section>
 
-    <p id="status" class="status">Idle. Pick a window and press Start.</p>
+    <p id="status" class="status">Pick a source to begin.</p>
 
     <section class="panel">
-      <h2>What's on screen now</h2>
+      <h2>Summary</h2>
       <p id="summary" class="summary">No analysis yet.</p>
     </section>
 
@@ -49,9 +71,9 @@
 
     <footer>
       <span id="cost">Cloud cost this session: $0.0000</span>
+      <span class="hotkey">Hotkey: Ctrl/Cmd + Shift + R</span>
     </footer>
 
-    <video id="video" muted></video>
     <script src="renderer.js"></script>
   </body>
 </html>
