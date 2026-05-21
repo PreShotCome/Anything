@@ -111,8 +111,12 @@ func (s *Service) Verify(ctx context.Context, drillID uuid.UUID, key string) (Ve
 		RetainUntil: rec.RetainUntil,
 	}
 
-	if rec.PublicKeyID != s.signer.PublicKeyID() {
-		res.Reason = "signed with a key this server does not hold (key rotated?)"
+	// Look the verifying key up by fingerprint: this resolves the active key
+	// and any retired key still in the verification set, so evidence signed
+	// before a key rotation continues to verify.
+	pub, ok := s.signer.VerificationKey(rec.PublicKeyID)
+	if !ok {
+		res.Reason = "signed with a key this server does not hold (key rotated out of the verification set?)"
 		return res, nil
 	}
 	pdf, err := s.store.ReadAll(ctx, key)
@@ -120,7 +124,7 @@ func (s *Service) Verify(ctx context.Context, drillID uuid.UUID, key string) (Ve
 		res.Reason = "evidence file unreadable: " + err.Error()
 		return res, nil
 	}
-	if err := Verify(s.signer.PublicKey(), pdf, rec.Signature); err != nil {
+	if err := Verify(pub, pdf, rec.Signature); err != nil {
 		res.Reason = err.Error()
 		return res, nil
 	}
