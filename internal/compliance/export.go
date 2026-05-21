@@ -45,9 +45,13 @@ func (e *Exporter) Export(ctx context.Context, accountID uuid.UUID, w io.Writer)
 			  FROM memberships m JOIN users u ON u.id = m.user_id
 			 WHERE m.account_id = $1 ORDER BY m.created_at`},
 		{"database_targets", `
-			SELECT id, name, source_kind, source_uri, assertion_table,
-			       assertion_min_rows, created_by_user_id, created_at, deleted_at
+			SELECT id, name, source_kind, source_uri,
+			       created_by_user_id, created_at, deleted_at
 			  FROM database_targets WHERE account_id = $1 ORDER BY created_at`},
+		{"assertions", `
+			SELECT a.id, a.target_id, a.kind, a.config, a.created_at
+			  FROM assertions a JOIN database_targets t ON t.id = a.target_id
+			 WHERE t.account_id = $1 ORDER BY a.target_id, a.created_at`},
 		{"drills", `
 			SELECT id, target_id, status, created_by_user_id, started_at,
 			       completed_at, error, evidence_path, created_at
