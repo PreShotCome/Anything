@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -25,6 +26,8 @@ type Config struct {
 	EmailFrom            string
 	PostHogAPIKey        string
 	PostHogHost          string
+
+	StaffEmails []string
 }
 
 func Load() (Config, error) {
@@ -44,6 +47,7 @@ func Load() (Config, error) {
 		EmailFrom:            getenv("EMAIL_FROM", "notifications@restoredrill.io"),
 		PostHogAPIKey:        os.Getenv("POSTHOG_API_KEY"),
 		PostHogHost:          os.Getenv("POSTHOG_HOST"),
+		StaffEmails:          parseList(os.Getenv("STAFF_EMAILS")),
 	}
 
 	if c.DatabaseURL == "" {
@@ -79,4 +83,19 @@ func getenv(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// parseList splits a comma-separated env value into trimmed, lower-cased,
+// non-empty entries.
+func parseList(v string) []string {
+	if v == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(v, ",") {
+		if p := strings.TrimSpace(strings.ToLower(part)); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

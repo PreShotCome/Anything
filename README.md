@@ -9,9 +9,10 @@ The marketing site lives in a separate repo.
 
 ## Status
 
-Layer 10 — compliance & legal polish. Sub-processor list, an honest cookie
-position, and a WCAG 2.2 AA accessibility pass with an automated check.
-(GDPR export/delete, retention, and the audit log landed in Phases 5–6.)
+Layer 11 — support. A staff-gated admin panel (user lookup, safe
+impersonation, drill replay, evidence regeneration), an in-app help page,
+and the on-call runbook. That completes layers 1–11 of the rubric in this
+repo; the Astro marketing/docs site is Phase 7 (separate repo).
 
 Implemented:
 - Chi + Templ + HTMX + Tailwind monolith
@@ -48,6 +49,9 @@ Implemented:
 - Legal pages: Terms, Privacy, DPA, Sub-processors, Cookie Policy
 - WCAG 2.2 AA pass — skip link, focus indicators, ARIA labels, landmarks —
   with an automated structural a11y test (`golang.org/x/net/html`)
+- Staff admin panel — user lookup, safe (reason-logged) impersonation,
+  drill replay, evidence regeneration
+- In-app `/help` FAQ page; incident + on-call + secret-rotation runbooks
 
 ## Local development
 

@@ -209,6 +209,33 @@ func (s *Store) GetTargetByID(ctx context.Context, targetID uuid.UUID) (Target, 
 	return t, err
 }
 
+// ListDrillsByCreator returns drills a given user kicked off, newest first.
+// Cross-account — for the staff admin panel only.
+func (s *Store) ListDrillsByCreator(ctx context.Context, userID uuid.UUID, limit int) ([]Drill, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, target_id, account_id, created_by_user_id, status, started_at, completed_at,
+		       error, evidence_path, sandbox_db, created_at
+		  FROM drills
+		 WHERE created_by_user_id = $1
+		 ORDER BY created_at DESC
+		 LIMIT $2
+	`, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Drill
+	for rows.Next() {
+		var d Drill
+		if err := rows.Scan(&d.ID, &d.TargetID, &d.AccountID, &d.CreatedByUserID, &d.Status,
+			&d.StartedAt, &d.CompletedAt, &d.Error, &d.EvidencePath, &d.SandboxDB, &d.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) ListDrills(ctx context.Context, accountID uuid.UUID, limit int) ([]Drill, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, target_id, account_id, created_by_user_id, status, started_at, completed_at,

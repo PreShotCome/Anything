@@ -50,6 +50,7 @@ type Handlers struct {
 	analytics            analytics.Analytics
 	flags                flags.Flags
 	postmarkWebhookToken string
+	staffEmails          map[string]bool
 }
 
 type Deps struct {
@@ -76,9 +77,14 @@ type Deps struct {
 	Analytics            analytics.Analytics
 	Flags                flags.Flags
 	PostmarkWebhookToken string
+	StaffEmails          []string
 }
 
 func New(d Deps) *Handlers {
+	staff := make(map[string]bool, len(d.StaffEmails))
+	for _, e := range d.StaffEmails {
+		staff[e] = true
+	}
 	return &Handlers{
 		pool:            d.Pool,
 		sessions:        d.Sessions,
@@ -103,6 +109,7 @@ func New(d Deps) *Handlers {
 		analytics:            d.Analytics,
 		flags:                d.Flags,
 		postmarkWebhookToken: d.PostmarkWebhookToken,
+		staffEmails:          staff,
 	}
 }
 
@@ -117,6 +124,9 @@ func (h *Handlers) layoutCtx(r *http.Request) templates.LayoutCtx {
 	acct, _ := auth.CurrentAccountFromContext(r.Context())
 	m, _ := auth.MembershipFromContext(r.Context())
 	lc := templates.LayoutCtx{User: u, Account: acct, Membership: m}
+	if imp, ok := auth.ImpersonationFromContext(r.Context()); ok {
+		lc.Impersonation = imp
+	}
 	if u != nil {
 		accts, _ := h.accounts.ListAccountsForUser(r.Context(), u.ID)
 		for _, a := range accts {
@@ -178,12 +188,34 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 	r.Get("/invitations/{token}", h.invitationPage)
 	r.Post("/invitations/{token}/accept", h.invitationAccept)
 
-	// Legal pages are public.
+	// Legal + help pages are public.
 	r.Get("/legal/terms", h.legalTerms)
 	r.Get("/legal/privacy", h.legalPrivacy)
 	r.Get("/legal/dpa", h.legalDPA)
 	r.Get("/legal/subprocessors", h.legalSubprocessors)
 	r.Get("/legal/cookies", h.legalCookies)
+	r.Get("/help", h.helpPage)
+
+	// Ending an impersonation: requires login but NOT staff — mid-
+	// impersonation the effective user is the (non-staff) target.
+	r.Group(func(r chi.Router) {
+		r.Use(auth.RequireUser)
+		r.Post("/impersonate/stop", h.impersonateStop)
+	})
+
+	// Staff admin panel — staff-gated, no account requirement (staff act
+	// across accounts).
+	r.Group(func(r chi.Router) {
+		r.Use(auth.RequireUser)
+		r.Use(auth.RequireStaff)
+		r.Get("/admin", h.adminHome)
+		r.Get("/admin/users", h.adminUserSearch)
+		r.Get("/admin/users/{id}", h.adminUserDetail)
+		r.Post("/admin/users/{id}/impersonate", h.adminImpersonate)
+		r.Get("/admin/drills/{id}", h.adminDrillDetail)
+		r.Post("/admin/drills/{id}/replay", h.adminDrillReplay)
+		r.Post("/admin/drills/{id}/regen-evidence", h.adminEvidenceRegen)
+	})
 
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireUser)

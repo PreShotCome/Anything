@@ -28,12 +28,15 @@ type Session struct {
 	UserID    uuid.UUID
 	CreatedAt time.Time
 	ExpiresAt time.Time
+	// ImpersonatorID, when set, is the staff user impersonating UserID.
+	ImpersonatorID *uuid.UUID
 }
 
 type User struct {
 	ID            uuid.UUID
 	Email         string
 	EmailVerified bool
+	IsStaff       bool
 	CreatedAt     time.Time
 }
 
@@ -152,30 +155,93 @@ func (s *Store) Lookup(ctx context.Context, r *http.Request) (*User, *Session, e
 		 WHERE token_hash   = $2
 		   AND expires_at   > $1
 		   AND last_seen_at > $3
-	  RETURNING id, user_id, created_at, expires_at
+	  RETURNING id, user_id, created_at, expires_at, impersonator_user_id
 	`, now, hash, idleCutoff)
 
 	var sess Session
-	if err := row.Scan(&sess.ID, &sess.UserID, &sess.CreatedAt, &sess.ExpiresAt); err != nil {
+	if err := row.Scan(&sess.ID, &sess.UserID, &sess.CreatedAt, &sess.ExpiresAt, &sess.ImpersonatorID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil, ErrNoSession
 		}
 		return nil, nil, err
 	}
 
-	var u User
-	err = s.pool.QueryRow(ctx, `
-		SELECT id, email, email_verified, created_at
-		  FROM users
-		 WHERE id = $1 AND deleted_at IS NULL
-	`, sess.UserID).Scan(&u.ID, &u.Email, &u.EmailVerified, &u.CreatedAt)
+	u, err := s.loadUser(ctx, sess.UserID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil, ErrNoSession
-		}
 		return nil, nil, err
 	}
-	return &u, &sess, nil
+	return u, &sess, nil
+}
+
+// loadUser fetches a non-deleted user by ID, returning ErrNoSession when the
+// row is gone (the session points at a deleted user).
+func (s *Store) loadUser(ctx context.Context, id uuid.UUID) (*User, error) {
+	var u User
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, email, email_verified, is_staff, created_at
+		  FROM users
+		 WHERE id = $1 AND deleted_at IS NULL
+	`, id).Scan(&u.ID, &u.Email, &u.EmailVerified, &u.IsStaff, &u.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNoSession
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
+// LoadUserByID is the exported lookup used to resolve an impersonator's
+// identity for the UI banner.
+func (s *Store) LoadUserByID(ctx context.Context, id uuid.UUID) (*User, error) {
+	return s.loadUser(ctx, id)
+}
+
+// StartImpersonation makes the current session act as targetUserID. The
+// caller must have verified the real user is staff. The real user becomes
+// the session's impersonator; current_account_id is cleared so the account
+// middleware re-resolves it for the target.
+func (s *Store) StartImpersonation(ctx context.Context, r *http.Request, staffUserID, targetUserID uuid.UUID) error {
+	c, err := r.Cookie(s.cookieName())
+	if err != nil {
+		return ErrNoSession
+	}
+	hash := hashToken(c.Value)
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE sessions
+		   SET user_id = $2, impersonator_user_id = $3, current_account_id = NULL
+		 WHERE token_hash = $1 AND impersonator_user_id IS NULL
+	`, hash, targetUserID, staffUserID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("auth: session already impersonating or not found")
+	}
+	return nil
+}
+
+// StopImpersonation restores the session to the impersonator (staff) user.
+func (s *Store) StopImpersonation(ctx context.Context, r *http.Request) error {
+	c, err := r.Cookie(s.cookieName())
+	if err != nil {
+		return ErrNoSession
+	}
+	hash := hashToken(c.Value)
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE sessions
+		   SET user_id = impersonator_user_id,
+		       impersonator_user_id = NULL,
+		       current_account_id = NULL
+		 WHERE token_hash = $1 AND impersonator_user_id IS NOT NULL
+	`, hash)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("auth: session is not impersonating")
+	}
+	return nil
 }
 
 // Destroy revokes the current session and clears the cookie.

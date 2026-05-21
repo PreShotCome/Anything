@@ -15,6 +15,8 @@ type LayoutCtx struct {
 	// Accounts is every account the user belongs to, for the nav switcher.
 	// When it has 0 or 1 entries the switcher renders as a static label.
 	Accounts []AccountChoice
+	// Impersonation, when set, drives the "you are impersonating" banner.
+	Impersonation *auth.Impersonation
 }
 
 // AccountChoice is one option in the nav account switcher.
@@ -43,6 +45,20 @@ templ LayoutWith(title string, lc LayoutCtx) {
 		</head>
 		<body class="min-h-screen flex flex-col">
 			<a href="#main-content" class="skip-link">Skip to main content</a>
+			if lc.Impersonation != nil {
+				<div class="bg-amber-500 px-4 py-2 text-center text-sm font-medium text-amber-950">
+					<span>
+						Staff impersonation — { lc.Impersonation.StaffEmail } acting as
+						if lc.User != nil {
+							{ lc.User.Email }
+						}
+					</span>
+					<form method="POST" action="/impersonate/stop" class="ml-2 inline">
+						@CSRFField()
+						<button type="submit" class="underline">Stop impersonating</button>
+					</form>
+				</div>
+			}
 			<header class="border-b border-zinc-200 dark:border-zinc-800">
 				<div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
 					<div class="flex items-center gap-3">
@@ -99,6 +115,10 @@ templ LayoutWith(title string, lc LayoutCtx) {
 						<a href="/databases" class="hover:underline">Databases</a>
 						<a href="/drills" class="hover:underline">Drills</a>
 						<a href="/account" class="hover:underline">Account</a>
+						<a href="/help" class="hover:underline">Help</a>
+						if lc.User.IsStaff {
+							<a href="/admin" class="ml-auto font-medium text-amber-700 hover:underline dark:text-amber-500">Admin</a>
+						}
 					</nav>
 				}
 			</header>

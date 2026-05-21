@@ -80,6 +80,20 @@ not started, planned · `debt` = works but should be revisited.
 - **Marketing site** — `deferred`. The Astro site + its SEO (OG cards,
   JSON-LD, sitemap, MDX content) is Phase 7 in a separate repo.
 
+## Layer 11 — Support
+
+- **Staff SSO** — `debt`. Staff are flagged via `users.is_staff`, promoted
+  from the `STAFF_EMAILS` allowlist at signup. The plan wants real staff
+  SSO behind the admin panel.
+- **Plain live-chat widget** — `deferred`. Third-party chat JS would
+  violate the CSP (`script-src 'self'`); in-app help is a static `/help`
+  page for now. The widget belongs on the marketing site or behind a CSP
+  carve-out.
+- **Help docs** — `deferred`. The full docs site (Astro + MDX + Pagefind
+  search) is Phase 7, a separate repo. `/help` is an interim FAQ.
+- **Admin refunds** — `deferred`. The plan's admin panel includes refunds;
+  billing is still a skeleton, so there is nothing to refund yet.
+
 ## Cross-cutting
 
 - **CI `govulncheck`** — `debt`. Runs with `continue-on-error: true`;

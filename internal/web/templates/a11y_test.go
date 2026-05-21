@@ -20,6 +20,8 @@ func TestAccessibility(t *testing.T) {
 		"signup-closed": SignupClosed(),
 		"legal-cookies": LegalPage(LayoutCtx{}, "Cookie Policy", LegalCookies()),
 		"legal-subproc": LegalPage(LayoutCtx{}, "Sub-processors", LegalSubprocessors()),
+		"help":          HelpPage(LayoutCtx{}),
+		"admin-home":    AdminHome(LayoutCtx{}),
 	}
 
 	for name, comp := range pages {

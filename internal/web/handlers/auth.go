@@ -166,6 +166,14 @@ func (h *Handlers) signupSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Promote staff from the STAFF_EMAILS allowlist (interim until SSO).
+	if h.staffEmails[email] {
+		if _, err := h.pool.Exec(r.Context(),
+			`UPDATE users SET is_staff = TRUE WHERE id = $1`, id); err != nil {
+			h.logger().Warn("staff promotion failed", "user_id", id, "err", err)
+		}
+	}
+
 	// Auto-create the personal account + owner membership.
 	acct, err := h.accounts.CreatePersonalAccount(r.Context(), id, email)
 	if err != nil {

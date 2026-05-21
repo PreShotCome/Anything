@@ -569,3 +569,46 @@ counsel-drafted legal copy (pages stay DRAFT); full axe-core in CI.
 
 ### When you're done
 Commit on `claude/restore-drill-phase-2-vHjzy`. Push and stop — no PR.
+
+---
+
+## Layer 11 — Support
+
+### Goal
+Give the team the tools to support customers: a staff-gated admin panel,
+an in-app help page, and the on-call runbook. The full Astro docs site
+with Pagefind search is Phase 7 (separate repo).
+
+### Locked decisions
+- **Staff identity:** a `users.is_staff` flag (no SSO yet). Signup promotes
+  any email in the `STAFF_EMAILS` allowlist; `RequireStaff` middleware 404s
+  non-staff on `/admin/*`.
+- **Safe impersonation:** `sessions.impersonator_user_id`. Starting
+  requires a typed reason, writes an audit event, and swaps the session's
+  effective user; a persistent banner shows it with a stop control.
+  `/impersonate/stop` lives outside the staff gate.
+- **Admin panel** (`/admin`, staff-only): user lookup, user detail
+  (accounts + drills), drill replay, evidence regeneration, a cross-account
+  drill view.
+- **In-app help:** a public `/help` FAQ page. The Plain chat widget is
+  skipped (CSP); noted in the backlog.
+- **On-call:** `runbooks/on-call.md`.
+
+### Data model
+`users.is_staff`, `sessions.impersonator_user_id`.
+
+### Deliverables
+1. auth: `User.IsStaff`, `Session.ImpersonatorID`, `RequireStaff`,
+   `StartImpersonation` / `StopImpersonation`, impersonation context.
+2. `internal/web/handlers/admin.go` — the admin panel handlers.
+3. Admin + help templates; impersonation banner + staff nav link.
+4. `runbooks/on-call.md`; `docs/backlog.md` extended.
+5. Tests: `RequireStaff` gating, impersonation lifecycle, a11y on the new
+   pages.
+
+### Out of scope
+The Astro docs site + Pagefind (Phase 7); the Plain chat widget; admin
+refunds (billing is a skeleton); real staff SSO.
+
+### When you're done
+Commit on `claude/restore-drill-phase-2-vHjzy`. Push and stop — no PR.

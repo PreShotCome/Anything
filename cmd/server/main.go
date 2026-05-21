@@ -185,6 +185,7 @@ func main() {
 		Analytics:            analyticsClient,
 		Flags:                featureFlags,
 		PostmarkWebhookToken: cfg.PostmarkWebhookToken,
+		StaffEmails:          cfg.StaffEmails,
 	})
 
 	// Sample River queue depth into the metrics gauge every 15s.

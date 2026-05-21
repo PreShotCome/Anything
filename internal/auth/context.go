@@ -15,7 +15,25 @@ const (
 	userCtxKey ctxKey = iota
 	accountCtxKey
 	membershipCtxKey
+	impersonationCtxKey
 )
+
+// Impersonation describes an active staff impersonation: the effective user
+// (from FromContext) is being acted-as by this staff member.
+type Impersonation struct {
+	StaffUserID uuid.UUID
+	StaffEmail  string
+}
+
+// ImpersonationFromContext returns the active impersonation, if any.
+func ImpersonationFromContext(ctx context.Context) (*Impersonation, bool) {
+	imp, ok := ctx.Value(impersonationCtxKey).(*Impersonation)
+	return imp, ok
+}
+
+func withImpersonation(ctx context.Context, imp *Impersonation) context.Context {
+	return context.WithValue(ctx, impersonationCtxKey, imp)
+}
 
 // FromContext returns the authenticated user, if any.
 func FromContext(ctx context.Context) (*User, bool) {
@@ -51,12 +69,36 @@ func WithMembership(ctx context.Context, m *account.Membership) context.Context 
 }
 
 // LoadUser is a middleware that resolves the session cookie (if any) and
-// stamps the user onto the request context. It does NOT require auth.
+// stamps the effective user onto the request context. When the session is
+// an impersonation, it also stamps the staff impersonator. Does NOT require
+// auth.
 func (s *Store) LoadUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, _, err := s.Lookup(r.Context(), r)
+		u, sess, err := s.Lookup(r.Context(), r)
 		if err == nil {
-			r = r.WithContext(WithUser(r.Context(), u))
+			ctx := WithUser(r.Context(), u)
+			if sess.ImpersonatorID != nil {
+				if staff, err := s.loadUser(ctx, *sess.ImpersonatorID); err == nil {
+					ctx = withImpersonation(ctx, &Impersonation{
+						StaffUserID: staff.ID, StaffEmail: staff.Email,
+					})
+				}
+			}
+			r = r.WithContext(ctx)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// RequireStaff is a middleware that 404s non-staff users (a 404, not a 403,
+// so the admin surface isn't even acknowledged to non-staff). It must run
+// after RequireUser.
+func RequireStaff(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, ok := FromContext(r.Context())
+		if !ok || !u.IsStaff {
+			http.NotFound(w, r)
+			return
 		}
 		next.ServeHTTP(w, r)
 	})
