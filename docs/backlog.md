@@ -24,9 +24,6 @@ not started, planned · `debt` = works but should be revisited.
   nothing reads them.
 ## Layer 4 — Perimeter & webhooks
 
-- **API key scopes** — `deferred`. `/v1` API keys carry full account access
-  (read + write on databases and drills). Per-key scopes / read-only keys
-  are not implemented.
 - **MFA / magic links / social login** — `deferred`. Plan layer 5 identity
   work; not built. Password auth only.
 
@@ -120,3 +117,8 @@ Layer-4 API:
   `{data,meta,errors}` envelope, `Idempotency-Key`-gated writes, opaque
   cursor pagination, a per-account 60/min rate limit, and an OpenAPI 3.1
   document at `/openapi.json` with a `/docs` reference page.
+- **API key scopes** — keys carry a scope set (`databases:read`,
+  `databases:write`, `drills:read`, `drills:write`); the `/v1` router gates
+  each endpoint on the scope it needs and returns `403 insufficient_scope`
+  otherwise. Scopes are chosen with checkboxes on key creation — untick the
+  write scopes for a read-only key.

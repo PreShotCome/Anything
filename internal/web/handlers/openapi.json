@@ -9,7 +9,7 @@
   "security": [{ "bearerAuth": [] }],
   "components": {
     "securitySchemes": {
-      "bearerAuth": { "type": "http", "scheme": "bearer", "description": "An API key created from the Account page." }
+      "bearerAuth": { "type": "http", "scheme": "bearer", "description": "An API key created from the Account page. Each key is limited to a set of scopes (databases:read, databases:write, drills:read, drills:write); a request whose key lacks the scope an endpoint needs is rejected with 403 insufficient_scope." }
     }
   },
   "paths": {

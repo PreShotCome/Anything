@@ -1,10 +1,24 @@
 package templates
 
 import (
+	"strings"
 	"time"
 
 	"github.com/preshotcome/anything/internal/apikey"
 )
+
+// scopeOption pairs a scope value with its human label for the create form.
+type scopeOption struct {
+	Value string
+	Label string
+}
+
+var apiKeyScopeOptions = []scopeOption{
+	{apikey.ScopeDatabasesRead, "Read databases"},
+	{apikey.ScopeDatabasesWrite, "Create databases"},
+	{apikey.ScopeDrillsRead, "Read drills & evidence"},
+	{apikey.ScopeDrillsWrite, "Start drills"},
+}
 
 // APIKeysPage lists an account's API keys. revealedSecret is non-empty only
 // immediately after creation — the one time the raw key is shown.
@@ -17,7 +31,7 @@ templ APIKeysPage(lc LayoutCtx, keys []apikey.Key, revealedSecret string) {
 		<p class="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
 			Keys authenticate the <a href="/docs" class="underline">REST API</a>
 			(<code>Authorization: Bearer rd_…</code>). Treat a key like a
-			password — it has full access to this account's databases and drills.
+			password. Each key is limited to the scopes you select below.
 		</p>
 
 		if revealedSecret != "" {
@@ -32,14 +46,29 @@ templ APIKeysPage(lc LayoutCtx, keys []apikey.Key, revealedSecret string) {
 			</div>
 		}
 
-		<form method="POST" action="/account/api-keys" class="card mb-6 flex flex-wrap items-end gap-3">
+		<form method="POST" action="/account/api-keys" class="card mb-6 max-w-xl space-y-4">
 			@CSRFField()
-			<div class="flex-1 min-w-[14rem]">
+			<div>
 				<label class="mb-1 block text-sm font-medium" for="name">Key name</label>
 				<input id="name" name="name" type="text" required maxlength="80" class="form-input" placeholder="ci-pipeline"/>
 				<p class="form-hint">A label so you can tell keys apart.</p>
 			</div>
-			<button type="submit" class="btn-primary">Create key</button>
+			<fieldset>
+				<legend class="mb-1 block text-sm font-medium">Scopes</legend>
+				<div class="grid grid-cols-1 gap-1 sm:grid-cols-2">
+					for _, opt := range apiKeyScopeOptions {
+						<label class="flex items-center gap-2 text-sm">
+							<input type="checkbox" name="scopes" value={ opt.Value } checked
+								class="rounded border-zinc-300 dark:border-zinc-700"/>
+							{ opt.Label }
+						</label>
+					}
+				</div>
+				<p class="form-hint">For a read-only key, untick the write scopes.</p>
+			</fieldset>
+			<div class="flex justify-end">
+				<button type="submit" class="btn-primary">Create key</button>
+			</div>
 		</form>
 
 		if len(keys) == 0 {
@@ -51,6 +80,7 @@ templ APIKeysPage(lc LayoutCtx, keys []apikey.Key, revealedSecret string) {
 						<tr>
 							<th class="px-4 py-2 text-left font-medium">Name</th>
 							<th class="px-4 py-2 text-left font-medium">Prefix</th>
+							<th class="px-4 py-2 text-left font-medium">Scopes</th>
 							<th class="px-4 py-2 text-left font-medium">Last used</th>
 							<th class="px-4 py-2 text-left font-medium">Status</th>
 							<th class="px-4 py-2 text-right font-medium">Actions</th>
@@ -61,6 +91,7 @@ templ APIKeysPage(lc LayoutCtx, keys []apikey.Key, revealedSecret string) {
 							<tr>
 								<td class="px-4 py-2 font-medium">{ k.Name }</td>
 								<td class="px-4 py-2 font-mono text-xs">{ k.Prefix }…</td>
+								<td class="px-4 py-2 text-xs text-zinc-500">{ scopeSummary(k) }</td>
 								<td class="px-4 py-2 text-xs text-zinc-500">{ lastUsed(k.LastUsedAt) }</td>
 								<td class="px-4 py-2">
 									if k.RevokedAt != nil {
@@ -93,4 +124,20 @@ func lastUsed(t *time.Time) string {
 		return "never"
 	}
 	return t.UTC().Format("2006-01-02 15:04 UTC")
+}
+
+// scopeSummary renders a key's scope set compactly: the common full-access
+// and read-only sets get a friendly label; anything else is listed verbatim.
+func scopeSummary(k apikey.Key) string {
+	if len(k.Scopes) == len(apikey.AllScopes) {
+		return "Full access"
+	}
+	if len(k.Scopes) == 0 {
+		return "—"
+	}
+	hasWrite := k.HasScope(apikey.ScopeDatabasesWrite) || k.HasScope(apikey.ScopeDrillsWrite)
+	if !hasWrite {
+		return "Read-only"
+	}
+	return strings.Join(k.Scopes, ", ")
 }

@@ -29,7 +29,10 @@ func (h *Handlers) apiKeyCreate(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "API key"
 	}
-	key, err := h.apiKeys.Create(r.Context(), lc.Account.ID, lc.User.ID, name)
+	// Only checked scope boxes are submitted; an empty set falls back to full
+	// access inside the store.
+	scopes := r.PostForm["scopes"]
+	key, err := h.apiKeys.Create(r.Context(), lc.Account.ID, lc.User.ID, name, scopes)
 	if err != nil {
 		http.Error(w, "create key: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -38,7 +41,7 @@ func (h *Handlers) apiKeyCreate(w http.ResponseWriter, r *http.Request) {
 		AccountID: &lc.Account.ID, ActorID: &lc.User.ID, Action: "apikey.created",
 		TargetKind: "api_key", TargetID: key.ID.String(),
 		IP: audit.ClientIP(r), UserAgent: r.UserAgent(),
-		Metadata: map[string]any{"name": name},
+		Metadata: map[string]any{"name": name, "scopes": key.Scopes},
 	})
 	// Render the list with the raw secret shown once — never redirected or
 	// logged (a query param would leak it into access logs).

@@ -32,8 +32,9 @@ func (v1FakeInserter) Insert(context.Context, river.JobArgs, *river.InsertOpts) 
 }
 
 // v1TestServer builds a Handlers with just the fields the /v1 router needs,
-// seeds an account, and returns the server + a working API key.
-func v1TestServer(t *testing.T, pool *pgxpool.Pool) (*httptest.Server, string, uuid.UUID) {
+// seeds an account, and returns the server, a full-access API key, the
+// account + user IDs, and the key store so a test can mint scoped keys.
+func v1TestServer(t *testing.T, pool *pgxpool.Pool) (*httptest.Server, string, uuid.UUID, uuid.UUID, *apikey.Store) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -53,7 +54,7 @@ func v1TestServer(t *testing.T, pool *pgxpool.Pool) (*httptest.Server, string, u
 	})
 
 	apiKeys := apikey.NewStore(pool)
-	key, err := apiKeys.Create(ctx, accountID, userID, "test")
+	key, err := apiKeys.Create(ctx, accountID, userID, "test", apikey.AllScopes)
 	if err != nil {
 		t.Fatalf("create key: %v", err)
 	}
@@ -70,7 +71,7 @@ func v1TestServer(t *testing.T, pool *pgxpool.Pool) (*httptest.Server, string, u
 	}
 	srv := httptest.NewServer(h.v1Router())
 	t.Cleanup(srv.Close)
-	return srv, key.Secret, accountID
+	return srv, key.Secret, accountID, userID, apiKeys
 }
 
 func v1Do(t *testing.T, method, url, apiKey, idemKey, body string) (*http.Response, map[string]any) {
@@ -111,7 +112,7 @@ func TestV1Auth(t *testing.T) {
 		t.Fatalf("pool: %v", err)
 	}
 	defer pool.Close()
-	srv, key, _ := v1TestServer(t, pool)
+	srv, key, _, _, _ := v1TestServer(t, pool)
 
 	// No key → 401.
 	if resp, _ := v1Do(t, "GET", srv.URL+"/databases", "", "", ""); resp.StatusCode != 401 {
@@ -131,6 +132,47 @@ func TestV1Auth(t *testing.T) {
 	}
 }
 
+func TestV1Scopes(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+	srv, _, accountID, userID, apiKeys := v1TestServer(t, pool)
+	ctx := context.Background()
+
+	// A read-only key can list databases but cannot create them.
+	ro, err := apiKeys.Create(ctx, accountID, userID, "read-only",
+		[]string{apikey.ScopeDatabasesRead, apikey.ScopeDrillsRead})
+	if err != nil {
+		t.Fatalf("create read-only key: %v", err)
+	}
+	if resp, _ := v1Do(t, "GET", srv.URL+"/databases", ro.Secret, "", ""); resp.StatusCode != 200 {
+		t.Fatalf("read-only GET /databases: got %d, want 200", resp.StatusCode)
+	}
+	body := `{"name":"prod","source_uri":"` + mustAbsTestdata(t) + `"}`
+	if resp, env := v1Do(t, "POST", srv.URL+"/databases", ro.Secret, "scope-1", body); resp.StatusCode != 403 {
+		t.Fatalf("read-only POST /databases: got %d, want 403 (env=%v)", resp.StatusCode, env)
+	}
+
+	// A drills-only key cannot reach the database endpoints at all.
+	drillsOnly, err := apiKeys.Create(ctx, accountID, userID, "drills-only",
+		[]string{apikey.ScopeDrillsRead})
+	if err != nil {
+		t.Fatalf("create drills-only key: %v", err)
+	}
+	if resp, _ := v1Do(t, "GET", srv.URL+"/databases", drillsOnly.Secret, "", ""); resp.StatusCode != 403 {
+		t.Fatalf("drills-only GET /databases: got %d, want 403", resp.StatusCode)
+	}
+	if resp, _ := v1Do(t, "GET", srv.URL+"/drills", drillsOnly.Secret, "", ""); resp.StatusCode != 200 {
+		t.Fatalf("drills-only GET /drills: got %d, want 200", resp.StatusCode)
+	}
+}
+
 func TestV1DatabaseCreateAndIdempotency(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -141,7 +183,7 @@ func TestV1DatabaseCreateAndIdempotency(t *testing.T) {
 		t.Fatalf("pool: %v", err)
 	}
 	defer pool.Close()
-	srv, key, _ := v1TestServer(t, pool)
+	srv, key, _, _, _ := v1TestServer(t, pool)
 
 	fixture := mustAbsTestdata(t)
 	body := `{"name":"prod","source_uri":"` + fixture + `","assertions":[{"kind":"row_count","config":{"table":"events","min_rows":1}}]}`
@@ -200,7 +242,7 @@ func TestV1DrillCreateAndList(t *testing.T) {
 		t.Fatalf("pool: %v", err)
 	}
 	defer pool.Close()
-	srv, key, _ := v1TestServer(t, pool)
+	srv, key, _, _, _ := v1TestServer(t, pool)
 
 	fixture := mustAbsTestdata(t)
 	_, env := v1Do(t, "POST", srv.URL+"/databases", key, "db-1",
@@ -239,7 +281,7 @@ func TestV1Pagination(t *testing.T) {
 		t.Fatalf("pool: %v", err)
 	}
 	defer pool.Close()
-	srv, key, _ := v1TestServer(t, pool)
+	srv, key, _, _, _ := v1TestServer(t, pool)
 
 	fixture := mustAbsTestdata(t)
 	for i := 0; i < 3; i++ {

@@ -9,10 +9,24 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 import (
+	"strings"
 	"time"
 
 	"github.com/preshotcome/anything/internal/apikey"
 )
+
+// scopeOption pairs a scope value with its human label for the create form.
+type scopeOption struct {
+	Value string
+	Label string
+}
+
+var apiKeyScopeOptions = []scopeOption{
+	{apikey.ScopeDatabasesRead, "Read databases"},
+	{apikey.ScopeDatabasesWrite, "Create databases"},
+	{apikey.ScopeDrillsRead, "Read drills & evidence"},
+	{apikey.ScopeDrillsWrite, "Start drills"},
+}
 
 // APIKeysPage lists an account's API keys. revealedSecret is non-empty only
 // immediately after creation — the one time the raw key is shown.
@@ -49,7 +63,7 @@ func APIKeysPage(lc LayoutCtx, keys []apikey.Key, revealedSecret string) templ.C
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"mb-2 flex items-baseline justify-between\"><h1 class=\"text-2xl font-semibold tracking-tight\">API keys</h1><a href=\"/account\" class=\"text-sm underline\">Back to account</a></div><p class=\"mb-6 text-sm text-zinc-600 dark:text-zinc-400\">Keys authenticate the <a href=\"/docs\" class=\"underline\">REST API</a> (<code>Authorization: Bearer rd_…</code>). Treat a key like a password — it has full access to this account's databases and drills.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"mb-2 flex items-baseline justify-between\"><h1 class=\"text-2xl font-semibold tracking-tight\">API keys</h1><a href=\"/account\" class=\"text-sm underline\">Back to account</a></div><p class=\"mb-6 text-sm text-zinc-600 dark:text-zinc-400\">Keys authenticate the <a href=\"/docs\" class=\"underline\">REST API</a> (<code>Authorization: Bearer rd_…</code>). Treat a key like a password. Each key is limited to the scopes you select below.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -61,7 +75,7 @@ func APIKeysPage(lc LayoutCtx, keys []apikey.Key, revealedSecret string) templ.C
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(revealedSecret)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 31, Col: 109}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 45, Col: 109}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -72,7 +86,7 @@ func APIKeysPage(lc LayoutCtx, keys []apikey.Key, revealedSecret string) templ.C
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " <form method=\"POST\" action=\"/account/api-keys\" class=\"card mb-6 flex flex-wrap items-end gap-3\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " <form method=\"POST\" action=\"/account/api-keys\" class=\"card mb-6 max-w-xl space-y-4\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -80,94 +94,143 @@ func APIKeysPage(lc LayoutCtx, keys []apikey.Key, revealedSecret string) templ.C
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div class=\"flex-1 min-w-[14rem]\"><label class=\"mb-1 block text-sm font-medium\" for=\"name\">Key name</label> <input id=\"name\" name=\"name\" type=\"text\" required maxlength=\"80\" class=\"form-input\" placeholder=\"ci-pipeline\"><p class=\"form-hint\">A label so you can tell keys apart.</p></div><button type=\"submit\" class=\"btn-primary\">Create key</button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div><label class=\"mb-1 block text-sm font-medium\" for=\"name\">Key name</label> <input id=\"name\" name=\"name\" type=\"text\" required maxlength=\"80\" class=\"form-input\" placeholder=\"ci-pipeline\"><p class=\"form-hint\">A label so you can tell keys apart.</p></div><fieldset><legend class=\"mb-1 block text-sm font-medium\">Scopes</legend><div class=\"grid grid-cols-1 gap-1 sm:grid-cols-2\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			for _, opt := range apiKeyScopeOptions {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<label class=\"flex items-center gap-2 text-sm\"><input type=\"checkbox\" name=\"scopes\" value=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var4 string
+				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(opt.Value)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 61, Col: 61}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\" checked class=\"rounded border-zinc-300 dark:border-zinc-700\"> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var5 string
+				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(opt.Label)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 63, Col: 18}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</label>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div><p class=\"form-hint\">For a read-only key, untick the write scopes.</p></fieldset><div class=\"flex justify-end\"><button type=\"submit\" class=\"btn-primary\">Create key</button></div></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if len(keys) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<p class=\"text-sm text-zinc-500\">No API keys yet.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<p class=\"text-sm text-zinc-500\">No API keys yet.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div class=\"card overflow-x-auto p-0\"><table class=\"min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800\"><thead class=\"bg-zinc-50 dark:bg-zinc-900/50\"><tr><th class=\"px-4 py-2 text-left font-medium\">Name</th><th class=\"px-4 py-2 text-left font-medium\">Prefix</th><th class=\"px-4 py-2 text-left font-medium\">Last used</th><th class=\"px-4 py-2 text-left font-medium\">Status</th><th class=\"px-4 py-2 text-right font-medium\">Actions</th></tr></thead> <tbody class=\"divide-y divide-zinc-200 dark:divide-zinc-800\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<div class=\"card overflow-x-auto p-0\"><table class=\"min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800\"><thead class=\"bg-zinc-50 dark:bg-zinc-900/50\"><tr><th class=\"px-4 py-2 text-left font-medium\">Name</th><th class=\"px-4 py-2 text-left font-medium\">Prefix</th><th class=\"px-4 py-2 text-left font-medium\">Scopes</th><th class=\"px-4 py-2 text-left font-medium\">Last used</th><th class=\"px-4 py-2 text-left font-medium\">Status</th><th class=\"px-4 py-2 text-right font-medium\">Actions</th></tr></thead> <tbody class=\"divide-y divide-zinc-200 dark:divide-zinc-800\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for _, k := range keys {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<tr><td class=\"px-4 py-2 font-medium\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var4 string
-					templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(k.Name)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 62, Col: 50}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</td><td class=\"px-4 py-2 font-mono text-xs\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var5 string
-					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(k.Prefix)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 63, Col: 58}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "…</td><td class=\"px-4 py-2 text-xs text-zinc-500\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<tr><td class=\"px-4 py-2 font-medium\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var6 string
-					templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(lastUsed(k.LastUsedAt))
+					templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(k.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 64, Col: 76}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 92, Col: 50}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</td><td class=\"px-4 py-2\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</td><td class=\"px-4 py-2 font-mono text-xs\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var7 string
+					templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(k.Prefix)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 93, Col: 58}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "…</td><td class=\"px-4 py-2 text-xs text-zinc-500\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var8 string
+					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(scopeSummary(k))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 94, Col: 69}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</td><td class=\"px-4 py-2 text-xs text-zinc-500\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var9 string
+					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(lastUsed(k.LastUsedAt))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 95, Col: 76}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</td><td class=\"px-4 py-2\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if k.RevokedAt != nil {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<span class=\"inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-xs text-rose-800 dark:bg-rose-900/40 dark:text-rose-300\">revoked</span>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<span class=\"inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-xs text-rose-800 dark:bg-rose-900/40 dark:text-rose-300\">revoked</span>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<span class=\"inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300\">active</span>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<span class=\"inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300\">active</span>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</td><td class=\"px-4 py-2 text-right\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</td><td class=\"px-4 py-2 text-right\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if k.RevokedAt == nil {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<form method=\"POST\" action=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<form method=\"POST\" action=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var7 templ.SafeURL
-						templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/account/api-keys/" + k.ID.String() + "/revoke"))
+						var templ_7745c5c3_Var10 templ.SafeURL
+						templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/account/api-keys/" + k.ID.String() + "/revoke"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 74, Col: 102}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/apikeys.templ`, Line: 105, Col: 102}
 						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\" class=\"inline\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" class=\"inline\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -175,22 +238,22 @@ func APIKeysPage(lc LayoutCtx, keys []apikey.Key, revealedSecret string) templ.C
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<button type=\"submit\" class=\"btn-ghost text-xs text-rose-600 dark:text-rose-400\">Revoke</button></form>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<button type=\"submit\" class=\"btn-ghost text-xs text-rose-600 dark:text-rose-400\">Revoke</button></form>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<span class=\"text-xs text-zinc-400\">—</span>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<span class=\"text-xs text-zinc-400\">—</span>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</td></tr>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</td></tr>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</tbody></table></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</tbody></table></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -210,6 +273,22 @@ func lastUsed(t *time.Time) string {
 		return "never"
 	}
 	return t.UTC().Format("2006-01-02 15:04 UTC")
+}
+
+// scopeSummary renders a key's scope set compactly: the common full-access
+// and read-only sets get a friendly label; anything else is listed verbatim.
+func scopeSummary(k apikey.Key) string {
+	if len(k.Scopes) == len(apikey.AllScopes) {
+		return "Full access"
+	}
+	if len(k.Scopes) == 0 {
+		return "—"
+	}
+	hasWrite := k.HasScope(apikey.ScopeDatabasesWrite) || k.HasScope(apikey.ScopeDrillsWrite)
+	if !hasWrite {
+		return "Read-only"
+	}
+	return strings.Join(k.Scopes, ", ")
 }
 
 var _ = templruntime.GeneratedTemplate

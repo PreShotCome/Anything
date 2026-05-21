@@ -27,6 +27,31 @@ var (
 	ErrRevoked  = errors.New("apikey: revoked")
 )
 
+// Scopes gate what a key may do on the /v1 API. A key carries a subset; the
+// v1 router enforces the scope each endpoint needs.
+const (
+	ScopeDatabasesRead  = "databases:read"
+	ScopeDatabasesWrite = "databases:write"
+	ScopeDrillsRead     = "drills:read"
+	ScopeDrillsWrite    = "drills:write"
+)
+
+// AllScopes is every scope a key can hold, in canonical order. A key created
+// with no valid scopes falls back to this full set.
+var AllScopes = []string{
+	ScopeDatabasesRead, ScopeDatabasesWrite, ScopeDrillsRead, ScopeDrillsWrite,
+}
+
+// ValidScope reports whether s is a known scope.
+func ValidScope(s string) bool {
+	switch s {
+	case ScopeDatabasesRead, ScopeDatabasesWrite, ScopeDrillsRead, ScopeDrillsWrite:
+		return true
+	default:
+		return false
+	}
+}
+
 // Key is an API key record. Secret is only populated by Create — it is the
 // one and only time the raw key is available.
 type Key struct {
@@ -34,11 +59,42 @@ type Key struct {
 	AccountID       uuid.UUID
 	Name            string
 	Prefix          string
+	Scopes          []string
 	CreatedByUserID uuid.UUID
 	CreatedAt       time.Time
 	LastUsedAt      *time.Time
 	RevokedAt       *time.Time
 	Secret          string // raw key — Create only, never persisted
+}
+
+// HasScope reports whether the key carries scope s.
+func (k Key) HasScope(s string) bool {
+	for _, sc := range k.Scopes {
+		if sc == s {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeScopes filters a requested scope set to known scopes in canonical
+// order, dropping unknowns and duplicates. An empty result falls back to the
+// full set so a key is never created powerless.
+func normalizeScopes(in []string) []string {
+	want := make(map[string]bool, len(in))
+	for _, s := range in {
+		want[s] = true
+	}
+	var out []string
+	for _, s := range AllScopes {
+		if want[s] {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return append([]string(nil), AllScopes...)
+	}
+	return out
 }
 
 type Store struct{ pool *pgxpool.Pool }
@@ -47,8 +103,9 @@ func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
 // Create generates a new key, stores its hash, and returns the record with
 // the raw Secret populated. The caller must show Secret to the user once and
-// then discard it.
-func (s *Store) Create(ctx context.Context, accountID, createdBy uuid.UUID, name string) (Key, error) {
+// then discard it. scopes is normalized — unknown scopes are dropped and an
+// empty set falls back to full access.
+func (s *Store) Create(ctx context.Context, accountID, createdBy uuid.UUID, name string, scopes []string) (Key, error) {
 	raw, err := generate()
 	if err != nil {
 		return Key{}, err
@@ -57,13 +114,14 @@ func (s *Store) Create(ctx context.Context, accountID, createdBy uuid.UUID, name
 		AccountID: accountID,
 		Name:      name,
 		Prefix:    displayPrefix(raw),
+		Scopes:    normalizeScopes(scopes),
 		Secret:    raw,
 	}
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO api_keys (account_id, name, key_prefix, key_hash, created_by_user_id)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO api_keys (account_id, name, key_prefix, key_hash, created_by_user_id, scopes)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, created_at
-	`, accountID, name, k.Prefix, hash(raw), createdBy).Scan(&k.ID, &k.CreatedAt)
+	`, accountID, name, k.Prefix, hash(raw), createdBy, k.Scopes).Scan(&k.ID, &k.CreatedAt)
 	return k, err
 }
 
@@ -75,9 +133,9 @@ func (s *Store) Authenticate(ctx context.Context, raw string) (Key, error) {
 	}
 	var k Key
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, account_id, name, key_prefix, created_by_user_id, created_at, last_used_at, revoked_at
+		SELECT id, account_id, name, key_prefix, scopes, created_by_user_id, created_at, last_used_at, revoked_at
 		  FROM api_keys WHERE key_hash = $1
-	`, hash(raw)).Scan(&k.ID, &k.AccountID, &k.Name, &k.Prefix,
+	`, hash(raw)).Scan(&k.ID, &k.AccountID, &k.Name, &k.Prefix, &k.Scopes,
 		&k.CreatedByUserID, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Key{}, ErrNotFound
@@ -95,7 +153,7 @@ func (s *Store) Authenticate(ctx context.Context, raw string) (Key, error) {
 // List returns an account's keys (including revoked ones), newest first.
 func (s *Store) List(ctx context.Context, accountID uuid.UUID) ([]Key, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, account_id, name, key_prefix, created_by_user_id, created_at, last_used_at, revoked_at
+		SELECT id, account_id, name, key_prefix, scopes, created_by_user_id, created_at, last_used_at, revoked_at
 		  FROM api_keys WHERE account_id = $1 ORDER BY created_at DESC
 	`, accountID)
 	if err != nil {
@@ -105,7 +163,7 @@ func (s *Store) List(ctx context.Context, accountID uuid.UUID) ([]Key, error) {
 	var out []Key
 	for rows.Next() {
 		var k Key
-		if err := rows.Scan(&k.ID, &k.AccountID, &k.Name, &k.Prefix,
+		if err := rows.Scan(&k.ID, &k.AccountID, &k.Name, &k.Prefix, &k.Scopes,
 			&k.CreatedByUserID, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt); err != nil {
 			return nil, err
 		}

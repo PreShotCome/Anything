@@ -61,25 +61,52 @@ func apiKeyFromContext(ctx context.Context) (apikey.Key, bool) {
 // --- router ---
 
 // v1Router builds the /v1 subtree: API-key auth, per-account rate limiting,
-// then the resource endpoints.
+// then the resource endpoints — each gated on the API key's scopes.
 func (h *Handlers) v1Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(h.v1Authenticate)
 	r.Use(h.v1Limiter.Middleware(v1AccountKey))
 
-	r.Get("/databases", h.v1ListDatabases)
-	r.Get("/databases/{id}", h.v1GetDatabase)
-	r.Get("/drills", h.v1ListDrills)
-	r.Get("/drills/{id}", h.v1GetDrill)
-	r.Get("/drills/{id}/evidence", h.v1GetEvidence)
-
-	// State-changing endpoints require an Idempotency-Key.
 	r.Group(func(r chi.Router) {
+		r.Use(h.v1RequireScope(apikey.ScopeDatabasesRead))
+		r.Get("/databases", h.v1ListDatabases)
+		r.Get("/databases/{id}", h.v1GetDatabase)
+	})
+	r.Group(func(r chi.Router) {
+		r.Use(h.v1RequireScope(apikey.ScopeDrillsRead))
+		r.Get("/drills", h.v1ListDrills)
+		r.Get("/drills/{id}", h.v1GetDrill)
+		r.Get("/drills/{id}/evidence", h.v1GetEvidence)
+	})
+
+	// State-changing endpoints require an Idempotency-Key. The scope check
+	// runs before idempotency so a 403 is never captured and replayed.
+	r.Group(func(r chi.Router) {
+		r.Use(h.v1RequireScope(apikey.ScopeDatabasesWrite))
 		r.Use(h.v1Idempotency)
 		r.Post("/databases", h.v1CreateDatabase)
+	})
+	r.Group(func(r chi.Router) {
+		r.Use(h.v1RequireScope(apikey.ScopeDrillsWrite))
+		r.Use(h.v1Idempotency)
 		r.Post("/drills", h.v1CreateDrill)
 	})
 	return r
+}
+
+// v1RequireScope rejects a request whose API key lacks the given scope.
+func (h *Handlers) v1RequireScope(scope string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			key, ok := apiKeyFromContext(r.Context())
+			if !ok || !key.HasScope(scope) {
+				writeAPIError(w, http.StatusForbidden, "insufficient_scope",
+					"this API key lacks the required scope: "+scope)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // v1AccountKey buckets the rate limiter by the authenticated account.
