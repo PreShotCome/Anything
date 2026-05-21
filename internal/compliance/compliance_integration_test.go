@@ -36,8 +36,8 @@ func seedFullAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ev *
 		t.Fatalf("membership: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
-		INSERT INTO database_targets (id,account_id,created_by_user_id,name,source_kind,source_uri,assertion_table)
-		VALUES ($1,$2,$3,'prod','postgres_dump_local','/x','events')`,
+		INSERT INTO database_targets (id,account_id,created_by_user_id,name,source_kind,source_uri)
+		VALUES ($1,$2,$3,'prod','postgres_dump_local','/x')`,
 		targetID, accountID, userID); err != nil {
 		t.Fatalf("target: %v", err)
 	}
