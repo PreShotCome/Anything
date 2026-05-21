@@ -7,31 +7,38 @@ import (
 	"github.com/preshotcome/anything/internal/drill"
 )
 
-templ DrillsPage(user *auth.User, drills []drill.Drill, targets []drill.Target, idemKey string) {
-	@Layout("Drills", user) {
+templ DrillsPage(lc LayoutCtx, drills []drill.Drill, targets []drill.Target, idemKey string) {
+	@LayoutWith("Drills", lc) {
 		<div class="mb-6 flex items-baseline justify-between">
 			<h1 class="text-2xl font-semibold tracking-tight">Drills</h1>
-			<a href="/databases/new" class="btn-ghost">Connect database</a>
 		</div>
-		if len(targets) > 0 {
-			<form method="POST" action="/drills" class="card mb-6 flex flex-wrap items-end gap-3">
-				<input type="hidden" name="idempotency_key" value={ idemKey }/>
-				<div class="flex-1 min-w-[14rem]">
-					<label class="mb-1 block text-sm font-medium" for="target_id">Run drill against</label>
-					<select id="target_id" name="target_id" class="form-input" required>
-						for _, t := range targets {
-							<option value={ t.ID.String() }>{ t.Name }</option>
-						}
-					</select>
+		if lc.Membership != nil && auth.Allowed(lc.Membership.Role, auth.ActionDrillWrite) {
+			if len(targets) > 0 {
+				<form method="POST" action="/drills" class="card mb-6 flex flex-wrap items-end gap-3">
+					<input type="hidden" name="idempotency_key" value={ idemKey }/>
+					<div class="flex-1 min-w-[14rem]">
+						<label class="mb-1 block text-sm font-medium" for="target_id">Run drill against</label>
+						<select id="target_id" name="target_id" class="form-input" required>
+							for _, t := range targets {
+								<option value={ t.ID.String() }>{ t.Name }</option>
+							}
+						</select>
+					</div>
+					<button type="submit" class="btn-primary">Run drill</button>
+				</form>
+			} else {
+				<div class="card mb-6 flex flex-col items-center gap-2 py-8 text-center">
+					<p class="text-sm text-zinc-600 dark:text-zinc-400">
+						Connect a database before running a drill.
+					</p>
+					if auth.Allowed(lc.Membership.Role, auth.ActionTargetWrite) {
+						<a href="/databases/new" class="btn-primary">Connect a database</a>
+					}
 				</div>
-				<button type="submit" class="btn-primary">Run drill</button>
-			</form>
+			}
 		} else {
-			<div class="card mb-6 flex flex-col items-center gap-2 py-8 text-center">
-				<p class="text-sm text-zinc-600 dark:text-zinc-400">
-					Connect a database before running a drill.
-				</p>
-				<a href="/databases/new" class="btn-primary">Connect a database</a>
+			<div class="card mb-6 py-4 text-center text-sm text-zinc-500">
+				You have view-only access to this account. Ask an admin to run a drill.
 			</div>
 		}
 		if len(drills) == 0 {
@@ -71,14 +78,14 @@ templ DrillsTable(drills []drill.Drill) {
 	</div>
 }
 
-templ DrillsErrorPage(user *auth.User, msg string) {
-	@Layout("Drills", user) {
+templ DrillsErrorPage(lc LayoutCtx, msg string) {
+	@LayoutWith("Drills", lc) {
 		<div class="alert-error">{ msg }</div>
 	}
 }
 
-templ DrillDetail(user *auth.User, d drill.Drill, t drill.Target, steps []drill.Step, ars []drill.AssertionResult) {
-	@Layout("Drill", user) {
+templ DrillDetail(lc LayoutCtx, d drill.Drill, t drill.Target, steps []drill.Step, ars []drill.AssertionResult) {
+	@LayoutWith("Drill", lc) {
 		<div class="mb-4 flex items-baseline justify-between">
 			<h1 class="text-2xl font-semibold tracking-tight">Drill</h1>
 			<a href="/drills" class="text-sm underline">All drills</a>

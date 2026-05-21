@@ -1,25 +1,35 @@
 package templates
 
 import (
+	"github.com/preshotcome/anything/internal/account"
 	"github.com/preshotcome/anything/internal/auth"
 	"github.com/preshotcome/anything/internal/drill"
 )
 
-templ Dashboard(user *auth.User, targets []drill.Target, drills []drill.Drill) {
-	@Layout("Dashboard", user) {
+// DashboardView is the dashboard's input bundle.
+type DashboardView struct {
+	Ctx     LayoutCtx
+	Targets []drill.Target
+	Drills  []drill.Drill
+}
+
+templ Dashboard(v DashboardView) {
+	@LayoutWith("Dashboard", v.Ctx) {
 		<div class="mb-6 flex items-baseline justify-between">
 			<h1 class="text-2xl font-semibold tracking-tight">Dashboard</h1>
-			<a href="/databases/new" class="btn-primary">Connect a database</a>
+			if v.Ctx.Membership != nil && auth.Allowed(v.Ctx.Membership.Role, auth.ActionTargetWrite) {
+				<a href="/databases/new" class="btn-primary">Connect a database</a>
+			}
 		</div>
-		if len(targets) == 0 && len(drills) == 0 {
-			@DrillsEmpty()
+		if len(v.Targets) == 0 && len(v.Drills) == 0 {
+			@DrillsEmpty(v.Ctx.Membership)
 		} else {
 			<section class="mb-8">
 				<h2 class="mb-3 text-lg font-semibold">Your databases</h2>
-				if len(targets) == 0 {
-					<p class="text-sm text-zinc-500">No databases yet. <a href="/databases/new" class="underline">Connect one</a> to run your first drill.</p>
+				if len(v.Targets) == 0 {
+					<p class="text-sm text-zinc-500">No databases yet.</p>
 				} else {
-					@TargetsTable(targets)
+					@TargetsTable(v.Targets, v.Ctx.Membership)
 				}
 			</section>
 			<section>
@@ -27,19 +37,17 @@ templ Dashboard(user *auth.User, targets []drill.Target, drills []drill.Drill) {
 					<h2 class="text-lg font-semibold">Recent drills</h2>
 					<a href="/drills" class="text-sm underline">All drills</a>
 				</div>
-				if len(drills) == 0 {
-					<p class="text-sm text-zinc-500">No drills yet. Go to <a class="underline" href="/drills">Drills</a> to run one.</p>
+				if len(v.Drills) == 0 {
+					<p class="text-sm text-zinc-500">No drills yet.</p>
 				} else {
-					@DrillsTable(drills)
+					@DrillsTable(v.Drills)
 				}
 			</section>
 		}
 	}
 }
 
-// DrillsEmpty is the cold-start state — the first thing every new user sees.
-// Designed as the App-Store-screenshot moment per the plan.
-templ DrillsEmpty() {
+templ DrillsEmpty(m *account.Membership) {
 	<div class="card flex flex-col items-center justify-center gap-3 py-16 text-center">
 		<div class="rounded-full bg-zinc-100 p-3 dark:bg-zinc-800">
 			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-8 w-8 text-zinc-500">
@@ -51,22 +59,10 @@ templ DrillsEmpty() {
 			Connect a Postgres backup source and we'll restore the latest dump in
 			an isolated sandbox, run your assertions, and email you a signed PDF.
 		</p>
-		<a href="/databases/new" class="btn-primary mt-2">Connect a database</a>
-		<p class="text-xs text-zinc-500">No drill yet. No data. That's the point — let's fix it.</p>
-	</div>
-}
-
-// DrillsLoading is the HTMX swap target while a list page is fetching.
-templ DrillsLoading() {
-	<div class="card flex items-center justify-center py-16 text-sm text-zinc-500">
-		<span class="animate-pulse">Loading drills…</span>
-	</div>
-}
-
-// DrillsError is shown when the list query fails. Keep it actionable.
-templ DrillsError(msg string) {
-	<div class="alert-error">
-		<p>Couldn't load drills: { msg }</p>
-		<button hx-get="/drills" hx-target="#drills-pane" class="btn-ghost mt-2 text-xs">Retry</button>
+		if m != nil && auth.Allowed(m.Role, auth.ActionTargetWrite) {
+			<a href="/databases/new" class="btn-primary mt-2">Connect a database</a>
+		} else {
+			<p class="text-xs text-zinc-500">Ask an admin or member of this account to connect a database.</p>
+		}
 	</div>
 }

@@ -19,10 +19,10 @@ import (
 
 // Data is everything the renderer needs to lay out one drill's PDF.
 type Data struct {
-	Drill      drill.Drill
-	Target     drill.Target
-	Steps      []drill.Step
-	Assertions []drill.AssertionResult
+	Drill       drill.Drill
+	Target      drill.Target
+	Steps       []drill.Step
+	Assertions  []drill.AssertionResult
 	GeneratedAt time.Time
 }
 

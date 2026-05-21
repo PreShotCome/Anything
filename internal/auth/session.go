@@ -56,8 +56,11 @@ func (s *Store) cookieName() string {
 }
 
 // Create issues a fresh session for a user and writes the cookie.
+// currentAccountID is optional (pass uuid.Nil for legacy callers); when
+// non-zero it's persisted on the session row so subsequent requests resolve
+// the same account context without a per-user lookup.
 // Returns the raw token (only sent to the client; only its hash is stored).
-func (s *Store) Create(ctx context.Context, w http.ResponseWriter, userID uuid.UUID) error {
+func (s *Store) Create(ctx context.Context, w http.ResponseWriter, userID, currentAccountID uuid.UUID) error {
 	raw, hash, err := generateToken()
 	if err != nil {
 		return err
@@ -66,10 +69,15 @@ func (s *Store) Create(ctx context.Context, w http.ResponseWriter, userID uuid.U
 	now := time.Now().UTC()
 	expires := now.Add(s.absoluteMaxAge)
 
+	var accountArg any
+	if currentAccountID != uuid.Nil {
+		accountArg = currentAccountID
+	}
+
 	_, err = s.pool.Exec(ctx, `
-		INSERT INTO sessions (id, user_id, token_hash, created_at, last_seen_at, expires_at)
-		VALUES ($1, $2, $3, $4, $4, $5)
-	`, id, userID, hash, now, expires)
+		INSERT INTO sessions (id, user_id, token_hash, created_at, last_seen_at, expires_at, current_account_id)
+		VALUES ($1, $2, $3, $4, $4, $5, $6)
+	`, id, userID, hash, now, expires, accountArg)
 	if err != nil {
 		return err
 	}
@@ -84,6 +92,47 @@ func (s *Store) Create(ctx context.Context, w http.ResponseWriter, userID uuid.U
 		SameSite: http.SameSiteLaxMode,
 	})
 	return nil
+}
+
+// CurrentAccountID reads the session's persisted current_account_id, if any.
+// Returns uuid.Nil with nil error when the session has no account set.
+func (s *Store) CurrentAccountID(ctx context.Context, r *http.Request) (uuid.UUID, error) {
+	c, err := r.Cookie(s.cookieName())
+	if err != nil {
+		return uuid.Nil, ErrNoSession
+	}
+	hash := hashToken(c.Value)
+	var id *uuid.UUID
+	if err := s.pool.QueryRow(ctx, `
+		SELECT current_account_id FROM sessions WHERE token_hash = $1
+	`, hash).Scan(&id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, ErrNoSession
+		}
+		return uuid.Nil, err
+	}
+	if id == nil {
+		return uuid.Nil, nil
+	}
+	return *id, nil
+}
+
+// SetCurrentAccount persists current_account_id onto the session. The
+// caller MUST have verified the user is a member of the account first.
+func (s *Store) SetCurrentAccount(ctx context.Context, r *http.Request, accountID uuid.UUID) error {
+	c, err := r.Cookie(s.cookieName())
+	if err != nil {
+		return ErrNoSession
+	}
+	hash := hashToken(c.Value)
+	var arg any
+	if accountID != uuid.Nil {
+		arg = accountID
+	}
+	_, err = s.pool.Exec(ctx, `
+		UPDATE sessions SET current_account_id = $2 WHERE token_hash = $1
+	`, hash, arg)
+	return err
 }
 
 // Lookup resolves the session cookie to a user, sliding the idle window.

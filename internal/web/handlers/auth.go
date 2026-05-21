@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/preshotcome/anything/internal/account"
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/auth"
 	"github.com/preshotcome/anything/internal/web/templates"
@@ -26,7 +27,7 @@ func (h *Handlers) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
-	render(w, r, templates.Login("", ""))
+	render(w, r, templates.LoginWithNext("", "", safeNext(r.URL.Query().Get("next"))))
 }
 
 func (h *Handlers) loginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -36,10 +37,11 @@ func (h *Handlers) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	email := strings.TrimSpace(strings.ToLower(r.PostFormValue("email")))
 	password := r.PostFormValue("password")
+	next := safeNext(r.PostFormValue("next"))
 
 	if email == "" || password == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		render(w, r, templates.Login("Enter an email and password.", email))
+		render(w, r, templates.LoginWithNext("Enter an email and password.", email, next))
 		return
 	}
 
@@ -53,7 +55,7 @@ func (h *Handlers) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		// Constant-ish time: always run a verify against a dummy hash.
 		_ = auth.VerifyPassword(password, dummyHash)
 		w.WriteHeader(http.StatusUnauthorized)
-		render(w, r, templates.Login("Invalid email or password.", email))
+		render(w, r, templates.LoginWithNext("Invalid email or password.", email, next))
 		return
 	}
 
@@ -65,21 +67,26 @@ func (h *Handlers) loginSubmit(w http.ResponseWriter, r *http.Request) {
 			UserAgent: r.UserAgent(),
 		})
 		w.WriteHeader(http.StatusUnauthorized)
-		render(w, r, templates.Login("Invalid email or password.", email))
+		render(w, r, templates.LoginWithNext("Invalid email or password.", email, next))
 		return
 	}
 
-	if err := h.sessions.Create(r.Context(), w, id); err != nil {
+	// Pick an account to land them on: prefer their personal account if it
+	// still exists; otherwise any account they're a member of.
+	currentAccount := h.pickDefaultAccount(r.Context(), id)
+
+	if err := h.sessions.Create(r.Context(), w, id, currentAccount); err != nil {
 		http.Error(w, "session error", http.StatusInternalServerError)
 		return
 	}
 	_ = h.audit.Record(r.Context(), audit.Event{
+		AccountID: nilIfZero(currentAccount),
 		ActorID:   &id,
 		Action:    "login.succeeded",
 		IP:        audit.ClientIP(r),
 		UserAgent: r.UserAgent(),
 	})
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, redirectTarget(next), http.StatusSeeOther)
 }
 
 func (h *Handlers) signupPage(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +94,7 @@ func (h *Handlers) signupPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
-	render(w, r, templates.Signup("", ""))
+	render(w, r, templates.SignupWithNext("", "", safeNext(r.URL.Query().Get("next"))))
 }
 
 func (h *Handlers) signupSubmit(w http.ResponseWriter, r *http.Request) {
@@ -97,15 +104,16 @@ func (h *Handlers) signupSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	email := strings.TrimSpace(strings.ToLower(r.PostFormValue("email")))
 	password := r.PostFormValue("password")
+	next := safeNext(r.PostFormValue("next"))
 
 	if email == "" || !strings.Contains(email, "@") {
 		w.WriteHeader(http.StatusBadRequest)
-		render(w, r, templates.Signup("Enter a valid email.", email))
+		render(w, r, templates.SignupWithNext("Enter a valid email.", email, next))
 		return
 	}
 	if len(password) < 12 {
 		w.WriteHeader(http.StatusBadRequest)
-		render(w, r, templates.Signup("Password must be at least 12 characters.", email))
+		render(w, r, templates.SignupWithNext("Password must be at least 12 characters.", email, next))
 		return
 	}
 
@@ -119,29 +127,68 @@ func (h *Handlers) signupSubmit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, errEmailTaken) {
 			w.WriteHeader(http.StatusConflict)
-			render(w, r, templates.Signup("That email is already registered.", email))
+			render(w, r, templates.SignupWithNext("That email is already registered.", email, next))
 			return
 		}
 		http.Error(w, "create user", http.StatusInternalServerError)
 		return
 	}
 
-	if err := h.sessions.Create(r.Context(), w, id); err != nil {
+	// Auto-create the personal account + owner membership.
+	acct, err := h.accounts.CreatePersonalAccount(r.Context(), id, email)
+	if err != nil {
+		http.Error(w, "create account: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = h.audit.Record(r.Context(), audit.Event{
+		AccountID: &acct.ID, ActorID: &id, Action: "account.created",
+		TargetKind: "account", TargetID: acct.ID.String(),
+		Metadata: map[string]any{"name": acct.Name, "kind": "personal"},
+	})
+
+	// Best-effort Stripe customer creation. Failures here are logged but
+	// don't block signup; the account works fine without billing.
+	if h.billing.Enabled() {
+		if customerID, err := h.billing.Create(r.Context(), acct.ID, email, acct.Name); err == nil && customerID != "" {
+			_ = h.accounts.SetStripeCustomerID(r.Context(), acct.ID, customerID)
+		}
+	}
+
+	if err := h.sessions.Create(r.Context(), w, id, acct.ID); err != nil {
 		http.Error(w, "session error", http.StatusInternalServerError)
 		return
 	}
 	_ = h.audit.Record(r.Context(), audit.Event{
-		ActorID:   &id,
-		Action:    "user.signed_up",
-		IP:        audit.ClientIP(r),
-		UserAgent: r.UserAgent(),
+		AccountID: &acct.ID, ActorID: &id, Action: "user.signed_up",
+		IP: audit.ClientIP(r), UserAgent: r.UserAgent(),
 	})
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, redirectTarget(next), http.StatusSeeOther)
+}
+
+// safeNext sanitizes a post-auth redirect target. Only same-origin absolute
+// paths are allowed (must start with a single "/"), defeating open-redirect.
+func safeNext(next string) string {
+	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") {
+		return ""
+	}
+	return next
+}
+
+func redirectTarget(next string) string {
+	if next == "" {
+		return "/dashboard"
+	}
+	return next
 }
 
 func (h *Handlers) logout(w http.ResponseWriter, r *http.Request) {
 	if u, ok := auth.FromContext(r.Context()); ok {
+		var acct *uuid.UUID
+		if a, ok := auth.CurrentAccountFromContext(r.Context()); ok {
+			acct = &a.ID
+		}
 		_ = h.audit.Record(r.Context(), audit.Event{
+			AccountID: acct,
 			ActorID:   &u.ID,
 			Action:    "logout",
 			IP:        audit.ClientIP(r),
@@ -153,10 +200,36 @@ func (h *Handlers) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) dashboard(w http.ResponseWriter, r *http.Request) {
-	u, _ := auth.FromContext(r.Context())
-	targets, _ := h.drills.ListTargets(r.Context(), u.ID)
-	recent, _ := h.drills.ListDrills(r.Context(), u.ID, 10)
-	render(w, r, templates.Dashboard(u, targets, recent))
+	lc := h.layoutCtx(r)
+	dv := templates.DashboardView{Ctx: lc}
+	if lc.Account != nil {
+		dv.Targets, _ = h.drills.ListTargets(r.Context(), lc.Account.ID)
+		dv.Drills, _ = h.drills.ListDrills(r.Context(), lc.Account.ID, 10)
+	}
+	render(w, r, templates.Dashboard(dv))
+}
+
+// pickDefaultAccount returns the account the user should land on after
+// login. We pick the oldest account they own; otherwise the oldest one
+// they're a member of; uuid.Nil if none.
+func (h *Handlers) pickDefaultAccount(ctx context.Context, userID uuid.UUID) uuid.UUID {
+	accounts, err := h.accounts.ListAccountsForUser(ctx, userID)
+	if err != nil || len(accounts) == 0 {
+		return uuid.Nil
+	}
+	for _, a := range accounts {
+		if a.Role == account.RoleOwner {
+			return a.ID
+		}
+	}
+	return accounts[0].ID
+}
+
+func nilIfZero(id uuid.UUID) *uuid.UUID {
+	if id == uuid.Nil {
+		return nil
+	}
+	return &id
 }
 
 var errEmailTaken = errors.New("email already registered")

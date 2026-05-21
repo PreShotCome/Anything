@@ -14,14 +14,22 @@ import (
 // --- Job args (one per step). Each is its own River job kind so retries,
 // metrics, and queue routing happen per step rather than per drill.
 
-type ProvisionArgs struct{ DrillID uuid.UUID `json:"drill_id"` }
-type FetchArgs struct{ DrillID uuid.UUID `json:"drill_id"` }
+type ProvisionArgs struct {
+	DrillID uuid.UUID `json:"drill_id"`
+}
+type FetchArgs struct {
+	DrillID uuid.UUID `json:"drill_id"`
+}
 type RestoreArgs struct {
 	DrillID  uuid.UUID `json:"drill_id"`
 	FilePath string    `json:"file_path"`
 }
-type AssertArgs struct{ DrillID uuid.UUID `json:"drill_id"` }
-type ReportArgs struct{ DrillID uuid.UUID `json:"drill_id"` }
+type AssertArgs struct {
+	DrillID uuid.UUID `json:"drill_id"`
+}
+type ReportArgs struct {
+	DrillID uuid.UUID `json:"drill_id"`
+}
 type TeardownArgs struct {
 	DrillID uuid.UUID `json:"drill_id"`
 	// FailureReason, when set, marks the drill failed after teardown runs.
@@ -77,8 +85,10 @@ func (o *Orchestrator) EnqueueDrill(ctx context.Context, drillID uuid.UUID) erro
 	// invisible to the user.
 	dr, err := o.store.GetDrillByID(ctx, drillID)
 	if err == nil && o.audit != nil {
+		acct := dr.AccountID
 		_ = o.audit.Record(ctx, audit.Event{
-			ActorID:    &dr.UserID,
+			AccountID:  &acct,
+			ActorID:    &dr.CreatedByUserID,
 			Action:     "drill.created",
 			TargetKind: "drill",
 			TargetID:   drillID.String(),

@@ -289,3 +289,56 @@ Locally:
 
 ### When you're done
 Commit on the existing Phase 2 branch (`claude/restore-drill-phase-2-vHjzy`). One logical commit per concern is fine; squash if it gets messy. Push and stop — do not open a PR.
+
+---
+
+## Phase 3 — Multi-tenant (accounts, memberships, RBAC, billing skeleton)
+
+### Goal
+Turn the single-user data model into a multi-tenant one with accounts,
+memberships, RBAC, and a billing skeleton — so Phase 4 (perimeter
+middleware) has a real `Authorize(actor, action, resource)` to call and
+Phase 5 (billing enforcement) has plan state to read.
+
+### Architecture decisions (locked)
+- Accounts are the unit of ownership; users join accounts via memberships
+  and carry a role per account. Signup auto-creates a personal account
+  where the signup user is `owner`.
+- RBAC roles: `owner`, `admin`, `member`, `viewer`. Single `Authorize`
+  matrix entry point used by handlers + UI conditionals.
+- Sessions carry `current_account_id`; a nav switcher posts to
+  `/account/switch`.
+- Stripe wired with a real client but degrades to a no-op when
+  `STRIPE_SECRET_KEY` is unset. No Checkout / webhooks / plan enforcement
+  this phase.
+- Phase 2 rows backfilled into personal accounts; `user_id` becomes
+  `created_by_user_id`, the authoritative tenant key is `account_id`.
+
+### Data model additions (one new goose migration)
+- `accounts(id, name, slug UNIQUE, stripe_customer_id, plan, created_at, deleted_at)` — plan enum `trial|starter|pro`.
+- `memberships(account_id, user_id, role, created_at)` PK `(account_id,user_id)`.
+- `invitations(id, account_id, email, role, token_hash UNIQUE, invited_by_user_id, expires_at, accepted_at, created_at)`.
+- `sessions.current_account_id`.
+- `database_targets`, `drills`: add `account_id NOT NULL`, rename `user_id` → `created_by_user_id`.
+- `idempotency_keys`: re-scope to account.
+- `audit_events.account_id` for per-account audit feeds.
+- Backfill: one personal account + owner membership per existing user.
+
+### Concrete deliverables
+1. `internal/account` package: Store (accounts, memberships, invitations).
+2. `internal/auth/rbac.go`: `Action` constants, `Authorize`, role matrix, `RequireAction` middleware.
+3. `internal/billing/stripe.go`: `Customers` interface + Stripe impl + Noop fallback.
+4. Session: `CurrentAccountID`, `SetCurrentAccount`; `LoadCurrentAccount` middleware.
+5. Drill/target handlers re-scoped to the current account.
+6. Invitation flow: invite by email+role, link logged in dev, accept page.
+7. UI: nav account switcher, `/account` settings + members + invite, write controls hidden for `viewer`.
+8. Audit events: `account.created/invited/member_added/member_role_changed/member_removed/switched`.
+9. Tests: RBAC matrix, cross-account isolation, invitation lifecycle.
+
+### Out of scope
+Stripe Checkout/webhooks (P4); real email (P6); MFA/magic-link/social
+login (P4); CSRF/rate-limits/API idempotency-header (P4); plan enforcement
+(P5); signed PDFs/Object Lock (P5); account delete + GDPR export (P5).
+
+### When you're done
+Commit on `claude/restore-drill-phase-2-vHjzy`. Push and stop — no PR.

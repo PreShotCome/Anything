@@ -1,15 +1,19 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/preshotcome/anything/internal/account"
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/auth"
+	"github.com/preshotcome/anything/internal/billing"
 	"github.com/preshotcome/anything/internal/drill"
+	"github.com/preshotcome/anything/internal/web/templates"
 )
 
 type Handlers struct {
@@ -18,6 +22,8 @@ type Handlers struct {
 	audit    *audit.Logger
 	drills   *drill.Store
 	orch     *drill.Orchestrator
+	accounts *account.Store
+	billing  billing.Customers
 }
 
 type Deps struct {
@@ -26,6 +32,8 @@ type Deps struct {
 	Audit        *audit.Logger
 	Drills       *drill.Store
 	Orchestrator *drill.Orchestrator
+	Accounts     *account.Store
+	Billing      billing.Customers
 }
 
 func New(d Deps) *Handlers {
@@ -35,7 +43,31 @@ func New(d Deps) *Handlers {
 		audit:    d.Audit,
 		drills:   d.Drills,
 		orch:     d.Orchestrator,
+		accounts: d.Accounts,
+		billing:  d.Billing,
 	}
+}
+
+// logger returns the package-default slog logger. Wrapped in a method so
+// future per-request loggers can replace it without touching every handler.
+func (h *Handlers) logger() *slog.Logger { return slog.Default() }
+
+// layoutCtx assembles the nav chrome state for a request: the user, their
+// current account + role, and the full account list for the switcher.
+func (h *Handlers) layoutCtx(r *http.Request) templates.LayoutCtx {
+	u, _ := auth.FromContext(r.Context())
+	acct, _ := auth.CurrentAccountFromContext(r.Context())
+	m, _ := auth.MembershipFromContext(r.Context())
+	lc := templates.LayoutCtx{User: u, Account: acct, Membership: m}
+	if u != nil {
+		accts, _ := h.accounts.ListAccountsForUser(r.Context(), u.ID)
+		for _, a := range accts {
+			lc.Accounts = append(lc.Accounts, templates.AccountChoice{
+				ID: a.ID.String(), Name: a.Name,
+			})
+		}
+	}
+	return lc
 }
 
 func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
@@ -45,6 +77,7 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(securityHeaders)
 	r.Use(h.sessions.LoadUser)
+	r.Use(h.sessions.LoadCurrentAccount(h.accounts))
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -60,19 +93,54 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 	r.Post("/signup", h.signupSubmit)
 	r.Post("/logout", h.logout)
 
+	// Invitation accept page — public so the recipient can land before
+	// signing up; POST requires login.
+	r.Get("/invitations/{token}", h.invitationPage)
+	r.Post("/invitations/{token}/accept", h.invitationAccept)
+
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireUser)
+		r.Use(auth.RequireAccount)
+
 		r.Get("/dashboard", h.dashboard)
+		r.Post("/account/switch", h.accountSwitch)
 
-		r.Get("/databases", h.targetsList)
-		r.Get("/databases/new", h.targetNewPage)
-		r.Post("/databases", h.targetCreate)
+		// Reads
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAction(auth.ActionTargetRead))
+			r.Get("/databases", h.targetsList)
+		})
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAction(auth.ActionDrillRead))
+			r.Get("/drills", h.drillsList)
+			r.Get("/drills/{id}", h.drillDetail)
+			r.Get("/drills/{id}/steps", h.drillStepsPartial)
+		})
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAction(auth.ActionEvidenceRead))
+			r.Get("/drills/{id}/evidence", h.drillEvidence)
+		})
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAction(auth.ActionAccountRead))
+			r.Get("/account", h.accountSettings)
+		})
 
-		r.Get("/drills", h.drillsList)
-		r.Post("/drills", h.drillCreate)
-		r.Get("/drills/{id}", h.drillDetail)
-		r.Get("/drills/{id}/steps", h.drillStepsPartial)
-		r.Get("/drills/{id}/evidence", h.drillEvidence)
+		// Writes (RBAC-gated)
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAction(auth.ActionTargetWrite))
+			r.Get("/databases/new", h.targetNewPage)
+			r.Post("/databases", h.targetCreate)
+		})
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAction(auth.ActionDrillWrite))
+			r.Post("/drills", h.drillCreate)
+		})
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAction(auth.ActionMemberWrite))
+			r.Post("/account/invitations", h.inviteCreate)
+			r.Post("/account/members/{user_id}", h.memberUpdate)
+			r.Post("/account/members/{user_id}/remove", h.memberRemove)
+		})
 	})
 
 	return r

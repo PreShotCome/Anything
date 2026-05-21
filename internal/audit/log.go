@@ -20,6 +20,7 @@ func New(pool *pgxpool.Pool) *Logger {
 }
 
 type Event struct {
+	AccountID  *uuid.UUID
 	ActorID    *uuid.UUID
 	Action     string
 	TargetKind string
@@ -39,9 +40,11 @@ func (l *Logger) Record(ctx context.Context, e Event) error {
 		meta = b
 	}
 	_, err := l.pool.Exec(ctx, `
-		INSERT INTO audit_events (actor_id, action, target_kind, target_id, ip, user_agent, metadata)
-		VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), $5, NULLIF($6, ''), $7::jsonb)
-	`, e.ActorID, e.Action, e.TargetKind, e.TargetID, ipOrNil(e.IP), e.UserAgent, meta)
+		INSERT INTO audit_events
+		    (account_id, actor_id, action, target_kind, target_id, ip, user_agent, metadata)
+		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6, NULLIF($7, ''), $8::jsonb)
+	`, e.AccountID, e.ActorID, e.Action, e.TargetKind, e.TargetID,
+		ipOrNil(e.IP), e.UserAgent, meta)
 	return err
 }
 

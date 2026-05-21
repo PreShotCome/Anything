@@ -3,6 +3,7 @@ package templates
 import (
 	"strconv"
 
+	"github.com/preshotcome/anything/internal/account"
 	"github.com/preshotcome/anything/internal/auth"
 	"github.com/preshotcome/anything/internal/drill"
 )
@@ -14,11 +15,13 @@ type TargetFormValues struct {
 	MinRowsInput string
 }
 
-templ TargetsPage(user *auth.User, targets []drill.Target) {
-	@Layout("Databases", user) {
+templ TargetsPage(lc LayoutCtx, targets []drill.Target) {
+	@LayoutWith("Databases", lc) {
 		<div class="mb-6 flex items-baseline justify-between">
 			<h1 class="text-2xl font-semibold tracking-tight">Databases</h1>
-			<a href="/databases/new" class="btn-primary">Connect a database</a>
+			if lc.Membership != nil && auth.Allowed(lc.Membership.Role, auth.ActionTargetWrite) {
+				<a href="/databases/new" class="btn-primary">Connect a database</a>
+			}
 		</div>
 		if len(targets) == 0 {
 			<div class="card flex flex-col items-center justify-center gap-2 py-16 text-center">
@@ -26,15 +29,17 @@ templ TargetsPage(user *auth.User, targets []drill.Target) {
 				<p class="max-w-md text-sm text-zinc-600 dark:text-zinc-400">
 					Add a database target to start running drills.
 				</p>
-				<a href="/databases/new" class="btn-primary mt-2">Connect a database</a>
+				if lc.Membership != nil && auth.Allowed(lc.Membership.Role, auth.ActionTargetWrite) {
+					<a href="/databases/new" class="btn-primary mt-2">Connect a database</a>
+				}
 			</div>
 		} else {
-			@TargetsTable(targets)
+			@TargetsTable(targets, lc.Membership)
 		}
 	}
 }
 
-templ TargetsTable(targets []drill.Target) {
+templ TargetsTable(targets []drill.Target, m *account.Membership) {
 	<div class="card overflow-x-auto p-0">
 		<table class="min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
 			<thead class="bg-zinc-50 dark:bg-zinc-900/50">
@@ -54,7 +59,11 @@ templ TargetsTable(targets []drill.Target) {
 							row_count(<span class="font-mono">{ t.AssertionTable }</span>) ≥ { strconv.Itoa(t.AssertionMinRows) }
 						</td>
 						<td class="px-4 py-2 text-right">
-							<a href="/drills" class="text-sm underline">Run drill</a>
+							if m != nil && auth.Allowed(m.Role, auth.ActionDrillWrite) {
+								<a href="/drills" class="text-sm underline">Run drill</a>
+							} else {
+								<span class="text-xs text-zinc-400">view only</span>
+							}
 						</td>
 					</tr>
 				}
@@ -63,8 +72,8 @@ templ TargetsTable(targets []drill.Target) {
 	</div>
 }
 
-templ TargetNewForm(user *auth.User, values TargetFormValues, errMsg string) {
-	@Layout("Connect a database", user) {
+templ TargetNewForm(lc LayoutCtx, values TargetFormValues, errMsg string) {
+	@LayoutWith("Connect a database", lc) {
 		<h1 class="mb-4 text-2xl font-semibold tracking-tight">Connect a database</h1>
 		<form method="POST" action="/databases" class="card max-w-xl space-y-4">
 			if errMsg != "" {

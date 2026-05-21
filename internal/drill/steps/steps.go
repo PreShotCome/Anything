@@ -386,8 +386,10 @@ func (w *ReportWorker) Work(ctx context.Context, job *river.Job[drill.ReportArgs
 		_ = w.D.Store.MarkDrillFailed(ctx, drillID, "one or more assertions failed")
 		// Record the evidence path so the user can download the failure PDF.
 		_ = w.D.Store.MarkEvidence(ctx, drillID, path)
+		acct := dr.AccountID
 		_ = w.D.Audit.Record(ctx, audit.Event{
-			ActorID: &dr.UserID, Action: "drill.failed",
+			AccountID: &acct,
+			ActorID:   &dr.CreatedByUserID, Action: "drill.failed",
 			TargetKind: "drill", TargetID: drillID.String(),
 			Metadata: map[string]any{"reason": "assertion_failed"},
 		})
@@ -443,10 +445,12 @@ func (w *TeardownWorker) Work(ctx context.Context, job *river.Job[drill.Teardown
 	//   - failure_reason set → drill is failed (already may be marked, no-op)
 	//   - else if any step failed → failed
 	//   - else → succeeded
+	acct := dr.AccountID
 	if job.Args.FailureReason != "" {
 		_ = w.D.Store.MarkDrillFailed(ctx, drillID, job.Args.FailureReason)
 		_ = w.D.Audit.Record(ctx, audit.Event{
-			ActorID: &dr.UserID, Action: "drill.failed",
+			AccountID: &acct,
+			ActorID:   &dr.CreatedByUserID, Action: "drill.failed",
 			TargetKind: "drill", TargetID: drillID.String(),
 			Metadata: map[string]any{"reason": job.Args.FailureReason},
 		})
@@ -470,7 +474,8 @@ func (w *TeardownWorker) Work(ctx context.Context, job *river.Job[drill.Teardown
 		return err
 	}
 	_ = w.D.Audit.Record(ctx, audit.Event{
-		ActorID: &dr.UserID, Action: "drill.completed",
+		AccountID: &acct,
+		ActorID:   &dr.CreatedByUserID, Action: "drill.completed",
 		TargetKind: "drill", TargetID: drillID.String(),
 	})
 	return nil

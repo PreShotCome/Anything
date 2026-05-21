@@ -45,27 +45,29 @@ func (s Status) Terminal() bool {
 }
 
 type Target struct {
-	ID                uuid.UUID
-	UserID            uuid.UUID
-	Name              string
-	SourceKind        string
-	SourceURI         string
-	AssertionTable    string
-	AssertionMinRows  int
-	CreatedAt         time.Time
+	ID               uuid.UUID
+	AccountID        uuid.UUID
+	CreatedByUserID  uuid.UUID
+	Name             string
+	SourceKind       string
+	SourceURI        string
+	AssertionTable   string
+	AssertionMinRows int
+	CreatedAt        time.Time
 }
 
 type Drill struct {
-	ID            uuid.UUID
-	TargetID      uuid.UUID
-	UserID        uuid.UUID
-	Status        Status
-	StartedAt     *time.Time
-	CompletedAt   *time.Time
-	Error         *string
-	EvidencePath  *string
-	SandboxDB     *string
-	CreatedAt     time.Time
+	ID              uuid.UUID
+	TargetID        uuid.UUID
+	AccountID       uuid.UUID
+	CreatedByUserID uuid.UUID
+	Status          Status
+	StartedAt       *time.Time
+	CompletedAt     *time.Time
+	Error           *string
+	EvidencePath    *string
+	SandboxDB       *string
+	CreatedAt       time.Time
 }
 
 type Step struct {
@@ -110,22 +112,24 @@ var ErrNotFound = errors.New("drill: not found")
 func (s *Store) CreateTarget(ctx context.Context, t Target) (Target, error) {
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO database_targets
-		    (user_id, name, source_kind, source_uri, assertion_table, assertion_min_rows)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		    (account_id, created_by_user_id, name, source_kind, source_uri,
+		     assertion_table, assertion_min_rows)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, created_at
-	`, t.UserID, t.Name, t.SourceKind, t.SourceURI, t.AssertionTable, t.AssertionMinRows).
+	`, t.AccountID, t.CreatedByUserID, t.Name, t.SourceKind, t.SourceURI,
+		t.AssertionTable, t.AssertionMinRows).
 		Scan(&t.ID, &t.CreatedAt)
 	return t, err
 }
 
-func (s *Store) ListTargets(ctx context.Context, userID uuid.UUID) ([]Target, error) {
+func (s *Store) ListTargets(ctx context.Context, accountID uuid.UUID) ([]Target, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, user_id, name, source_kind, source_uri,
+		SELECT id, account_id, created_by_user_id, name, source_kind, source_uri,
 		       assertion_table, assertion_min_rows, created_at
 		  FROM database_targets
-		 WHERE user_id = $1 AND deleted_at IS NULL
+		 WHERE account_id = $1 AND deleted_at IS NULL
 		 ORDER BY created_at DESC
-	`, userID)
+	`, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +137,7 @@ func (s *Store) ListTargets(ctx context.Context, userID uuid.UUID) ([]Target, er
 	var out []Target
 	for rows.Next() {
 		var t Target
-		if err := rows.Scan(&t.ID, &t.UserID, &t.Name, &t.SourceKind, &t.SourceURI,
+		if err := rows.Scan(&t.ID, &t.AccountID, &t.CreatedByUserID, &t.Name, &t.SourceKind, &t.SourceURI,
 			&t.AssertionTable, &t.AssertionMinRows, &t.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -142,14 +146,14 @@ func (s *Store) ListTargets(ctx context.Context, userID uuid.UUID) ([]Target, er
 	return out, rows.Err()
 }
 
-func (s *Store) GetTarget(ctx context.Context, userID, targetID uuid.UUID) (Target, error) {
+func (s *Store) GetTarget(ctx context.Context, accountID, targetID uuid.UUID) (Target, error) {
 	var t Target
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, user_id, name, source_kind, source_uri,
+		SELECT id, account_id, created_by_user_id, name, source_kind, source_uri,
 		       assertion_table, assertion_min_rows, created_at
 		  FROM database_targets
-		 WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
-	`, targetID, userID).Scan(&t.ID, &t.UserID, &t.Name, &t.SourceKind, &t.SourceURI,
+		 WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL
+	`, targetID, accountID).Scan(&t.ID, &t.AccountID, &t.CreatedByUserID, &t.Name, &t.SourceKind, &t.SourceURI,
 		&t.AssertionTable, &t.AssertionMinRows, &t.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Target{}, ErrNotFound
@@ -159,23 +163,14 @@ func (s *Store) GetTarget(ctx context.Context, userID, targetID uuid.UUID) (Targ
 
 // --- drills ---
 
-func (s *Store) CreateDrill(ctx context.Context, d Drill) (Drill, error) {
-	err := s.pool.QueryRow(ctx, `
-		INSERT INTO drills (target_id, user_id, status)
-		VALUES ($1, $2, 'pending')
-		RETURNING id, status, created_at
-	`, d.TargetID, d.UserID).Scan(&d.ID, &d.Status, &d.CreatedAt)
-	return d, err
-}
-
-func (s *Store) GetDrill(ctx context.Context, userID, drillID uuid.UUID) (Drill, error) {
+func (s *Store) GetDrill(ctx context.Context, accountID, drillID uuid.UUID) (Drill, error) {
 	var d Drill
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, target_id, user_id, status, started_at, completed_at,
+		SELECT id, target_id, account_id, created_by_user_id, status, started_at, completed_at,
 		       error, evidence_path, sandbox_db, created_at
 		  FROM drills
-		 WHERE id = $1 AND user_id = $2
-	`, drillID, userID).Scan(&d.ID, &d.TargetID, &d.UserID, &d.Status,
+		 WHERE id = $1 AND account_id = $2
+	`, drillID, accountID).Scan(&d.ID, &d.TargetID, &d.AccountID, &d.CreatedByUserID, &d.Status,
 		&d.StartedAt, &d.CompletedAt, &d.Error, &d.EvidencePath, &d.SandboxDB, &d.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Drill{}, ErrNotFound
@@ -187,11 +182,11 @@ func (s *Store) GetDrill(ctx context.Context, userID, drillID uuid.UUID) (Drill,
 func (s *Store) GetDrillByID(ctx context.Context, drillID uuid.UUID) (Drill, error) {
 	var d Drill
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, target_id, user_id, status, started_at, completed_at,
+		SELECT id, target_id, account_id, created_by_user_id, status, started_at, completed_at,
 		       error, evidence_path, sandbox_db, created_at
 		  FROM drills
 		 WHERE id = $1
-	`, drillID).Scan(&d.ID, &d.TargetID, &d.UserID, &d.Status,
+	`, drillID).Scan(&d.ID, &d.TargetID, &d.AccountID, &d.CreatedByUserID, &d.Status,
 		&d.StartedAt, &d.CompletedAt, &d.Error, &d.EvidencePath, &d.SandboxDB, &d.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Drill{}, ErrNotFound
@@ -202,11 +197,11 @@ func (s *Store) GetDrillByID(ctx context.Context, drillID uuid.UUID) (Drill, err
 func (s *Store) GetTargetByID(ctx context.Context, targetID uuid.UUID) (Target, error) {
 	var t Target
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, user_id, name, source_kind, source_uri,
+		SELECT id, account_id, created_by_user_id, name, source_kind, source_uri,
 		       assertion_table, assertion_min_rows, created_at
 		  FROM database_targets
 		 WHERE id = $1
-	`, targetID).Scan(&t.ID, &t.UserID, &t.Name, &t.SourceKind, &t.SourceURI,
+	`, targetID).Scan(&t.ID, &t.AccountID, &t.CreatedByUserID, &t.Name, &t.SourceKind, &t.SourceURI,
 		&t.AssertionTable, &t.AssertionMinRows, &t.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Target{}, ErrNotFound
@@ -214,15 +209,15 @@ func (s *Store) GetTargetByID(ctx context.Context, targetID uuid.UUID) (Target, 
 	return t, err
 }
 
-func (s *Store) ListDrills(ctx context.Context, userID uuid.UUID, limit int) ([]Drill, error) {
+func (s *Store) ListDrills(ctx context.Context, accountID uuid.UUID, limit int) ([]Drill, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, target_id, user_id, status, started_at, completed_at,
+		SELECT id, target_id, account_id, created_by_user_id, status, started_at, completed_at,
 		       error, evidence_path, sandbox_db, created_at
 		  FROM drills
-		 WHERE user_id = $1
+		 WHERE account_id = $1
 		 ORDER BY created_at DESC
 		 LIMIT $2
-	`, userID, limit)
+	`, accountID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +225,7 @@ func (s *Store) ListDrills(ctx context.Context, userID uuid.UUID, limit int) ([]
 	var out []Drill
 	for rows.Next() {
 		var d Drill
-		if err := rows.Scan(&d.ID, &d.TargetID, &d.UserID, &d.Status,
+		if err := rows.Scan(&d.ID, &d.TargetID, &d.AccountID, &d.CreatedByUserID, &d.Status,
 			&d.StartedAt, &d.CompletedAt, &d.Error, &d.EvidencePath, &d.SandboxDB, &d.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -403,10 +398,12 @@ func (s *Store) ListAssertions(ctx context.Context, drillID uuid.UUID) ([]Assert
 
 // --- idempotency ---
 
-// CreateDrillIdempotent creates a new drill iff the (user, key) tuple has not
-// already been claimed. If it has, returns the previously created drill_id and
-// reused=true. Atomic via the unique index on idempotency_keys.
-func (s *Store) CreateDrillIdempotent(ctx context.Context, userID, targetID uuid.UUID, key string) (drillID uuid.UUID, reused bool, err error) {
+// CreateDrillIdempotent creates a new drill iff the (account, key) tuple has
+// not already been claimed. If it has, returns the previously created
+// drill_id and reused=true. Atomic via the unique index on idempotency_keys.
+// createdByUserID is recorded for audit but doesn't gate uniqueness — two
+// members of the same account hitting the same key form-submit dedupe.
+func (s *Store) CreateDrillIdempotent(ctx context.Context, accountID, createdByUserID, targetID uuid.UUID, key string) (drillID uuid.UUID, reused bool, err error) {
 	if key == "" {
 		return uuid.Nil, false, errors.New("empty idempotency key")
 	}
@@ -421,8 +418,8 @@ func (s *Store) CreateDrillIdempotent(ctx context.Context, userID, targetID uuid
 	var existing string
 	err = tx.QueryRow(ctx, `
 		SELECT target_id FROM idempotency_keys
-		 WHERE user_id = $1 AND key = $2 AND scope = $3
-	`, userID, key, scope).Scan(&existing)
+		 WHERE account_id = $1 AND key = $2 AND scope = $3
+	`, accountID, key, scope).Scan(&existing)
 	switch {
 	case err == nil:
 		id, parseErr := uuid.Parse(existing)
@@ -437,18 +434,18 @@ func (s *Store) CreateDrillIdempotent(ctx context.Context, userID, targetID uuid
 	}
 
 	err = tx.QueryRow(ctx, `
-		INSERT INTO drills (target_id, user_id, status)
-		VALUES ($1, $2, 'pending')
+		INSERT INTO drills (target_id, account_id, created_by_user_id, status)
+		VALUES ($1, $2, $3, 'pending')
 		RETURNING id
-	`, targetID, userID).Scan(&drillID)
+	`, targetID, accountID, createdByUserID).Scan(&drillID)
 	if err != nil {
 		return uuid.Nil, false, err
 	}
 
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO idempotency_keys (user_id, key, scope, target_id)
-		VALUES ($1, $2, $3, $4)
-	`, userID, key, scope, drillID.String()); err != nil {
+		INSERT INTO idempotency_keys (account_id, user_id, key, scope, target_id)
+		VALUES ($1, $2, $3, $4, $5)
+	`, accountID, createdByUserID, key, scope, drillID.String()); err != nil {
 		return uuid.Nil, false, err
 	}
 

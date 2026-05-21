@@ -19,22 +19,22 @@ import (
 // --- /databases ---
 
 func (h *Handlers) targetsList(w http.ResponseWriter, r *http.Request) {
-	u, _ := auth.FromContext(r.Context())
-	targets, err := h.drills.ListTargets(r.Context(), u.ID)
+	lc := h.layoutCtx(r)
+	targets, err := h.drills.ListTargets(r.Context(), lc.Account.ID)
 	if err != nil {
 		render(w, r, templates.TargetsError("Could not load databases."))
 		return
 	}
-	render(w, r, templates.TargetsPage(u, targets))
+	render(w, r, templates.TargetsPage(lc, targets))
 }
 
 func (h *Handlers) targetNewPage(w http.ResponseWriter, r *http.Request) {
-	u, _ := auth.FromContext(r.Context())
-	render(w, r, templates.TargetNewForm(u, templates.TargetFormValues{}, ""))
+	render(w, r, templates.TargetNewForm(h.layoutCtx(r), templates.TargetFormValues{}, ""))
 }
 
 func (h *Handlers) targetCreate(w http.ResponseWriter, r *http.Request) {
-	u, _ := auth.FromContext(r.Context())
+	lc := h.layoutCtx(r)
+	u, acct := lc.User, lc.Account
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
@@ -47,7 +47,7 @@ func (h *Handlers) targetCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if values.Name == "" || values.SourceURI == "" || values.Table == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		render(w, r, templates.TargetNewForm(u, values, "Name, source path, and assertion table are required."))
+		render(w, r, templates.TargetNewForm(lc, values, "Name, source path, and assertion table are required."))
 		return
 	}
 	min := 1
@@ -56,20 +56,20 @@ func (h *Handlers) targetCreate(w http.ResponseWriter, r *http.Request) {
 			min = n
 		} else {
 			w.WriteHeader(http.StatusBadRequest)
-			render(w, r, templates.TargetNewForm(u, values, "Minimum row count must be a non-negative integer."))
+			render(w, r, templates.TargetNewForm(lc, values, "Minimum row count must be a non-negative integer."))
 			return
 		}
 	}
 
-	// Validate the source path early: friendlier error than a fetch-step failure.
 	if _, err := os.Stat(values.SourceURI); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		render(w, r, templates.TargetNewForm(u, values, "Source file not found: "+values.SourceURI))
+		render(w, r, templates.TargetNewForm(lc, values, "Source file not found: "+values.SourceURI))
 		return
 	}
 
 	t, err := h.drills.CreateTarget(r.Context(), drill.Target{
-		UserID:           u.ID,
+		AccountID:        acct.ID,
+		CreatedByUserID:  u.ID,
 		Name:             values.Name,
 		SourceKind:       "postgres_dump_local",
 		SourceURI:        values.SourceURI,
@@ -81,7 +81,7 @@ func (h *Handlers) targetCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.audit.Record(r.Context(), audit.Event{
-		ActorID: &u.ID, Action: "target.created",
+		AccountID: &acct.ID, ActorID: &u.ID, Action: "target.created",
 		TargetKind: "database_target", TargetID: t.ID.String(),
 		IP: audit.ClientIP(r), UserAgent: r.UserAgent(),
 	})
@@ -91,19 +91,20 @@ func (h *Handlers) targetCreate(w http.ResponseWriter, r *http.Request) {
 // --- /drills ---
 
 func (h *Handlers) drillsList(w http.ResponseWriter, r *http.Request) {
-	u, _ := auth.FromContext(r.Context())
-	ds, err := h.drills.ListDrills(r.Context(), u.ID, 100)
+	lc := h.layoutCtx(r)
+	ds, err := h.drills.ListDrills(r.Context(), lc.Account.ID, 100)
 	if err != nil {
-		render(w, r, templates.DrillsErrorPage(u, "Could not load drills."))
+		render(w, r, templates.DrillsErrorPage(lc, "Could not load drills."))
 		return
 	}
-	targets, _ := h.drills.ListTargets(r.Context(), u.ID)
+	targets, _ := h.drills.ListTargets(r.Context(), lc.Account.ID)
 	idemKey := uuid.NewString()
-	render(w, r, templates.DrillsPage(u, ds, targets, idemKey))
+	render(w, r, templates.DrillsPage(lc, ds, targets, idemKey))
 }
 
 func (h *Handlers) drillCreate(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
+	acct, _ := auth.CurrentAccountFromContext(r.Context())
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
@@ -120,15 +121,14 @@ func (h *Handlers) drillCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Authorize: target must belong to the user. Look it up before we claim
-	// anything so we don't pollute idempotency_keys with bad inputs.
-	target, err := h.drills.GetTarget(r.Context(), u.ID, targetID)
+	// Target must belong to the current account.
+	target, err := h.drills.GetTarget(r.Context(), acct.ID, targetID)
 	if err != nil {
 		http.Error(w, "target not found", http.StatusNotFound)
 		return
 	}
 
-	drillID, reused, err := h.drills.CreateDrillIdempotent(r.Context(), u.ID, target.ID, idem)
+	drillID, reused, err := h.drills.CreateDrillIdempotent(r.Context(), acct.ID, u.ID, target.ID, idem)
 	if err != nil {
 		http.Error(w, "create drill: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -145,13 +145,13 @@ func (h *Handlers) drillCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) drillDetail(w http.ResponseWriter, r *http.Request) {
-	u, _ := auth.FromContext(r.Context())
+	lc := h.layoutCtx(r)
 	drillID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	dr, err := h.drills.GetDrill(r.Context(), u.ID, drillID)
+	dr, err := h.drills.GetDrill(r.Context(), lc.Account.ID, drillID)
 	if err != nil {
 		if errors.Is(err, drill.ErrNotFound) {
 			http.NotFound(w, r)
@@ -163,17 +163,17 @@ func (h *Handlers) drillDetail(w http.ResponseWriter, r *http.Request) {
 	target, _ := h.drills.GetTargetByID(r.Context(), dr.TargetID)
 	steps, _ := h.drills.ListSteps(r.Context(), dr.ID)
 	ars, _ := h.drills.ListAssertions(r.Context(), dr.ID)
-	render(w, r, templates.DrillDetail(u, dr, target, steps, ars))
+	render(w, r, templates.DrillDetail(lc, dr, target, steps, ars))
 }
 
 func (h *Handlers) drillStepsPartial(w http.ResponseWriter, r *http.Request) {
-	u, _ := auth.FromContext(r.Context())
+	acct, _ := auth.CurrentAccountFromContext(r.Context())
 	drillID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	dr, err := h.drills.GetDrill(r.Context(), u.ID, drillID)
+	dr, err := h.drills.GetDrill(r.Context(), acct.ID, drillID)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -181,7 +181,6 @@ func (h *Handlers) drillStepsPartial(w http.ResponseWriter, r *http.Request) {
 	steps, _ := h.drills.ListSteps(r.Context(), dr.ID)
 	ars, _ := h.drills.ListAssertions(r.Context(), dr.ID)
 
-	// Tell HTMX to stop polling once the drill is terminal.
 	if dr.Status == drill.StatusSucceeded || dr.Status == drill.StatusFailed {
 		w.Header().Set("HX-Trigger", "drill-terminal")
 	}
@@ -190,12 +189,13 @@ func (h *Handlers) drillStepsPartial(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) drillEvidence(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
+	acct, _ := auth.CurrentAccountFromContext(r.Context())
 	drillID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	dr, err := h.drills.GetDrill(r.Context(), u.ID, drillID)
+	dr, err := h.drills.GetDrill(r.Context(), acct.ID, drillID)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -213,7 +213,7 @@ func (h *Handlers) drillEvidence(w http.ResponseWriter, r *http.Request) {
 	st, _ := f.Stat()
 
 	_ = h.audit.Record(r.Context(), audit.Event{
-		ActorID: &u.ID, Action: "evidence.downloaded",
+		AccountID: &acct.ID, ActorID: &u.ID, Action: "evidence.downloaded",
 		TargetKind: "drill", TargetID: dr.ID.String(),
 		IP: audit.ClientIP(r), UserAgent: r.UserAgent(),
 	})

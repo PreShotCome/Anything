@@ -1,8 +1,35 @@
 package templates
 
-import "github.com/preshotcome/anything/internal/auth"
+import (
+	"github.com/preshotcome/anything/internal/account"
+	"github.com/preshotcome/anything/internal/auth"
+)
+
+// LayoutCtx bundles the always-rendered nav state. Templates that want to
+// render account-aware chrome embed this; pages that don't need it pass a
+// zero value.
+type LayoutCtx struct {
+	User       *auth.User
+	Account    *account.Account
+	Membership *account.Membership
+	// Accounts is every account the user belongs to, for the nav switcher.
+	// When it has 0 or 1 entries the switcher renders as a static label.
+	Accounts []AccountChoice
+}
+
+// AccountChoice is one option in the nav account switcher.
+type AccountChoice struct {
+	ID   string
+	Name string
+}
 
 templ Layout(title string, user *auth.User) {
+	@LayoutWith(title, LayoutCtx{User: user}) {
+		{ children... }
+	}
+}
+
+templ LayoutWith(title string, lc LayoutCtx) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -12,14 +39,47 @@ templ Layout(title string, user *auth.User) {
 			<title>{ title } · Restore Drill</title>
 			<link rel="stylesheet" href="/static/app.css"/>
 			<script src="/static/htmx.min.js" defer></script>
+			<script src="/static/account-switch.js" defer></script>
 		</head>
 		<body class="min-h-screen flex flex-col">
 			<header class="border-b border-zinc-200 dark:border-zinc-800">
 				<div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-					<a href="/" class="font-semibold tracking-tight">Restore Drill</a>
+					<div class="flex items-center gap-3">
+						<a href="/" class="font-semibold tracking-tight">Restore Drill</a>
+						if lc.Account != nil {
+							<span class="hidden text-zinc-300 sm:inline dark:text-zinc-700">/</span>
+							if len(lc.Accounts) > 1 {
+								<form method="POST" action="/account/switch" class="hidden items-center gap-1 sm:flex">
+									<select
+										name="account_id"
+										data-account-switcher
+										class="rounded border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
+									>
+										for _, a := range lc.Accounts {
+											if lc.Account != nil && a.ID == lc.Account.ID.String() {
+												<option value={ a.ID } selected>{ a.Name }</option>
+											} else {
+												<option value={ a.ID }>{ a.Name }</option>
+											}
+										}
+									</select>
+									<button type="submit" class="btn-ghost text-xs">Switch</button>
+								</form>
+							} else {
+								<a href="/account" class="hidden text-sm text-zinc-600 hover:underline sm:inline dark:text-zinc-400">
+									{ lc.Account.Name }
+								</a>
+							}
+							if lc.Membership != nil {
+								<span class="hidden rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 sm:inline dark:bg-zinc-800 dark:text-zinc-400">
+									{ string(lc.Membership.Role) }
+								</span>
+							}
+						}
+					</div>
 					<nav class="flex items-center gap-3 text-sm">
-						if user != nil {
-							<span class="text-zinc-500 dark:text-zinc-400">{ user.Email }</span>
+						if lc.User != nil {
+							<span class="text-zinc-500 dark:text-zinc-400">{ lc.User.Email }</span>
 							<form method="POST" action="/logout" class="inline">
 								<button type="submit" class="btn-ghost">Sign out</button>
 							</form>
@@ -29,6 +89,14 @@ templ Layout(title string, user *auth.User) {
 						}
 					</nav>
 				</div>
+				if lc.User != nil && lc.Account != nil {
+					<div class="mx-auto flex max-w-5xl items-center gap-4 px-4 pb-2 text-sm">
+						<a href="/dashboard" class="hover:underline">Dashboard</a>
+						<a href="/databases" class="hover:underline">Databases</a>
+						<a href="/drills" class="hover:underline">Drills</a>
+						<a href="/account" class="hover:underline">Account</a>
+					</div>
+				}
 			</header>
 			<main class="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
 				{ children... }

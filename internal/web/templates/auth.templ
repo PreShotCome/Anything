@@ -1,6 +1,10 @@
 package templates
 
 templ Login(errMsg string, prefillEmail string) {
+	@LoginWithNext(errMsg, prefillEmail, "")
+}
+
+templ LoginWithNext(errMsg string, prefillEmail string, next string) {
 	@Layout("Sign in", nil) {
 		<div class="mx-auto max-w-sm">
 			<div class="card">
@@ -10,6 +14,9 @@ templ Login(errMsg string, prefillEmail string) {
 					<div class="alert-error mb-4">{ errMsg }</div>
 				}
 				<form method="POST" action="/login" class="space-y-3">
+					if next != "" {
+						<input type="hidden" name="next" value={ next }/>
+					}
 					<div>
 						<label class="label" for="email">Email</label>
 						<input id="email" name="email" type="email" required autocomplete="username" value={ prefillEmail } class="input"/>
@@ -21,7 +28,7 @@ templ Login(errMsg string, prefillEmail string) {
 					<button type="submit" class="btn-primary w-full">Sign in</button>
 				</form>
 				<p class="mt-4 text-center text-sm text-zinc-600 dark:text-zinc-400">
-					No account? <a href="/signup" class="underline">Create one</a>
+					No account? <a href={ signupHref(next) } class="underline">Create one</a>
 				</p>
 			</div>
 		</div>
@@ -29,6 +36,10 @@ templ Login(errMsg string, prefillEmail string) {
 }
 
 templ Signup(errMsg string, prefillEmail string) {
+	@SignupWithNext(errMsg, prefillEmail, "")
+}
+
+templ SignupWithNext(errMsg string, prefillEmail string, next string) {
 	@Layout("Create account", nil) {
 		<div class="mx-auto max-w-sm">
 			<div class="card">
@@ -38,6 +49,9 @@ templ Signup(errMsg string, prefillEmail string) {
 					<div class="alert-error mb-4">{ errMsg }</div>
 				}
 				<form method="POST" action="/signup" class="space-y-3">
+					if next != "" {
+						<input type="hidden" name="next" value={ next }/>
+					}
 					<div>
 						<label class="label" for="email">Email</label>
 						<input id="email" name="email" type="email" required autocomplete="username" value={ prefillEmail } class="input"/>
@@ -50,9 +64,23 @@ templ Signup(errMsg string, prefillEmail string) {
 					<button type="submit" class="btn-primary w-full">Create account</button>
 				</form>
 				<p class="mt-4 text-center text-sm text-zinc-600 dark:text-zinc-400">
-					Already have an account? <a href="/login" class="underline">Sign in</a>
+					Already have an account? <a href={ loginHref(next) } class="underline">Sign in</a>
 				</p>
 			</div>
 		</div>
 	}
+}
+
+func signupHref(next string) templ.SafeURL {
+	if next == "" {
+		return templ.SafeURL("/signup")
+	}
+	return templ.SafeURL("/signup?next=" + next)
+}
+
+func loginHref(next string) templ.SafeURL {
+	if next == "" {
+		return templ.SafeURL("/login")
+	}
+	return templ.SafeURL("/login?next=" + next)
 }

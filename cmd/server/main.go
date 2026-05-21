@@ -16,8 +16,10 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
+	"github.com/preshotcome/anything/internal/account"
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/auth"
+	"github.com/preshotcome/anything/internal/billing"
 	"github.com/preshotcome/anything/internal/config"
 	"github.com/preshotcome/anything/internal/db"
 	"github.com/preshotcome/anything/internal/drill"
@@ -49,6 +51,13 @@ func main() {
 	sessionStore := auth.NewStore(pool, cfg.IdleTimeout, cfg.AbsoluteMaxAge, cfg.IsProduction())
 	auditLog := audit.New(pool)
 	drillStore := drill.NewStore(pool)
+	accountStore := account.NewStore(pool)
+	billingCustomers := billing.NewStripeCustomers(cfg.StripeSecretKey)
+	if billingCustomers.Enabled() {
+		logger.Info("billing enabled (stripe)")
+	} else {
+		logger.Info("billing disabled (no STRIPE_SECRET_KEY) — using noop")
+	}
 
 	evidenceDir := cfg.EvidenceDir
 	if err := os.MkdirAll(evidenceDir, 0o755); err != nil {
@@ -91,6 +100,8 @@ func main() {
 		Audit:        auditLog,
 		Drills:       drillStore,
 		Orchestrator: orch,
+		Accounts:     accountStore,
+		Billing:      billingCustomers,
 	})
 
 	staticDir, _ := filepath.Abs("assets/static")

@@ -9,9 +9,8 @@ The marketing site lives in a separate repo.
 
 ## Status
 
-Phase 2 — first drill end-to-end. A logged-in user can register a database
-target (local pg_dump file in this phase), kick off a drill, watch the six
-steps run via HTMX polling, and download an unsigned PDF report.
+Phase 3 — multi-tenant. Accounts, memberships, RBAC, and a billing skeleton
+sit on top of the Phase 2 drill workflow.
 
 Implemented:
 - Chi + Templ + HTMX + Tailwind monolith
@@ -21,7 +20,11 @@ Implemented:
 - FlyMachineRunner stub for the production sandbox driver
 - `row_count` assertion
 - Unsigned PDF reports via `github.com/go-pdf/fpdf`
-- Idempotency on `POST /drills` (per-user, per-key)
+- Idempotency on `POST /drills` (per-account, per-key)
+- Multi-tenant accounts + memberships; signup auto-creates a personal account
+- RBAC (`owner`/`admin`/`member`/`viewer`) via a single `Authorize` matrix
+- Email invitations (dev: link logged to stdout), account switcher
+- Stripe billing skeleton — degrades to a no-op without `STRIPE_SECRET_KEY`
 
 ## Local development
 
@@ -60,6 +63,8 @@ skips.
 cmd/server               HTTP + River worker entrypoint
 cmd/migrate              goose + River migration CLI
 internal/auth            sessions, password hashing, RBAC
+internal/account         accounts, memberships, invitations
+internal/billing         Stripe customer wrapper (+ noop fallback)
 internal/db              pgx pool, transaction helpers
 internal/drill           drill domain (targets, drills, steps, results)
 internal/drill/steps     River workers for each pipeline step
