@@ -31,6 +31,22 @@ templ Layout(title string, user *auth.User) {
 	}
 }
 
+// Logo is the brand mark — a navy verification seal (rounded square + check).
+// Decorative: the adjacent "Restore Drill" wordmark carries the name.
+templ Logo() {
+	<svg viewBox="0 0 32 32" class="h-7 w-7 shrink-0" aria-hidden="true" focusable="false">
+		<rect width="32" height="32" rx="8" class="fill-brand-700"></rect>
+		<path
+			d="M9 16.5l4.5 4.5L23 11"
+			fill="none"
+			stroke="#ffffff"
+			stroke-width="3"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+		></path>
+	</svg>
+}
+
 templ LayoutWith(title string, lc LayoutCtx) {
 	<!DOCTYPE html>
 	<html lang="en">
@@ -62,7 +78,10 @@ templ LayoutWith(title string, lc LayoutCtx) {
 			<header class="border-b border-zinc-200 dark:border-zinc-800">
 				<div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
 					<div class="flex items-center gap-3">
-						<a href="/" class="font-semibold tracking-tight">Restore Drill</a>
+						<a href="/" class="flex items-center gap-2 font-semibold tracking-tight">
+							@Logo()
+							<span>Restore Drill</span>
+						</a>
 						if lc.Account != nil {
 							<span class="hidden text-zinc-300 sm:inline dark:text-zinc-700">/</span>
 							if len(lc.Accounts) > 1 {
