@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/preshotcome/anything/internal/compliance"
 	"github.com/preshotcome/anything/internal/drill"
 	"github.com/preshotcome/anything/internal/evidence"
+	"github.com/preshotcome/anything/internal/obs"
 	"github.com/preshotcome/anything/internal/ratelimit"
 	"github.com/preshotcome/anything/internal/web/csrf"
 	"github.com/preshotcome/anything/internal/web/templates"
@@ -39,6 +41,7 @@ type Handlers struct {
 	exporter        *compliance.Exporter
 	purger          *compliance.Purger
 	inserter        drill.RiverInserter
+	obs             *obs.Provider
 }
 
 type Deps struct {
@@ -59,6 +62,7 @@ type Deps struct {
 	Exporter        *compliance.Exporter
 	Purger          *compliance.Purger
 	Inserter        drill.RiverInserter
+	Obs             *obs.Provider
 }
 
 func New(d Deps) *Handlers {
@@ -80,6 +84,7 @@ func New(d Deps) *Handlers {
 		exporter:        d.Exporter,
 		purger:          d.Purger,
 		inserter:        d.Inserter,
+		obs:             d.Obs,
 	}
 }
 
@@ -109,16 +114,25 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Recoverer)
+	r.Use(obs.TracingMiddleware)         // open the server span first
+	r.Use(obs.RequestLogger(h.logger())) // one structured line per request
+	r.Use(h.obs.Metrics.Middleware)      // request count + latency
+	r.Use(h.obs.Recoverer)               // panic → error reporter → 500
 	r.Use(securityHeaders)
 	r.Use(h.sessions.LoadUser)
 	r.Use(h.sessions.LoadCurrentAccount(h.accounts))
+	r.Use(stampAccountForLogs) // enrich the request log with account_id
 	r.Use(h.csrf.Middleware)
 
+	// Liveness: the process is up. Readiness: dependencies are reachable.
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+	r.Get("/readyz", obs.ReadinessHandler(map[string]func(context.Context) error{
+		"database": h.pool.Ping,
+	}))
+	r.Handle("/metrics", h.obs.Metrics.Handler())
 
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(staticFS)))
 
@@ -206,6 +220,17 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 	})
 
 	return r
+}
+
+// stampAccountForLogs enriches the request-scoped log fields with the
+// resolved account ID, once LoadCurrentAccount has run.
+func stampAccountForLogs(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a, ok := auth.CurrentAccountFromContext(r.Context()); ok {
+			r = r.WithContext(obs.WithAccountID(r.Context(), a.ID.String()))
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // clientIPKey buckets the rate limiter by client IP.

@@ -26,6 +26,7 @@ import (
 	"github.com/preshotcome/anything/internal/drill"
 	"github.com/preshotcome/anything/internal/drill/steps"
 	"github.com/preshotcome/anything/internal/evidence"
+	"github.com/preshotcome/anything/internal/obs"
 	"github.com/preshotcome/anything/internal/ratelimit"
 	"github.com/preshotcome/anything/internal/runner"
 	"github.com/preshotcome/anything/internal/web/csrf"
@@ -45,6 +46,20 @@ func main() {
 
 	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	observ, err := obs.Setup(rootCtx, obs.Config{
+		Environment: cfg.Environment,
+		SentryDSN:   cfg.SentryDSN,
+	}, logger)
+	if err != nil {
+		logger.Error("obs setup", "err", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutCtx, shutCancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer shutCancel()
+		observ.Shutdown(shutCtx)
+	}()
 
 	pool, err := db.Open(rootCtx, cfg.DatabaseURL)
 	if err != nil {
@@ -105,8 +120,11 @@ func main() {
 		Audit:    auditLog,
 		Evidence: evidenceService,
 		Webhooks: webhookDispatch,
+		Metrics:  observ.Metrics,
 	})
-	river.AddWorker(workers, webhooks.NewDeliverWorker(webhookStore))
+	deliverWorker := webhooks.NewDeliverWorker(webhookStore)
+	deliverWorker.Metrics = observ.Metrics
+	river.AddWorker(workers, deliverWorker)
 	river.AddWorker(workers, &compliance.PurgeWorker{Purger: purger})
 	river.AddWorker(workers, &compliance.RetentionWorker{Sweeper: sweeper, Logger: logger})
 
@@ -146,7 +164,11 @@ func main() {
 		Exporter:        compliance.NewExporter(pool),
 		Purger:          purger,
 		Inserter:        riverClient,
+		Obs:             observ,
 	})
+
+	// Sample River queue depth into the metrics gauge every 15s.
+	go sampleQueueDepth(rootCtx, pool, observ.Metrics, logger)
 
 	staticDir, _ := filepath.Abs("assets/static")
 
@@ -176,6 +198,28 @@ func main() {
 		logger.Error("graceful shutdown", "err", err)
 	}
 	logger.Info("shutdown complete")
+}
+
+// sampleQueueDepth periodically counts available River jobs into the
+// queue-depth gauge so a backlog is visible on the metrics dashboard.
+func sampleQueueDepth(ctx context.Context, pool *pgxpool.Pool, m *obs.Metrics, logger *slog.Logger) {
+	t := time.NewTicker(15 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			var n int
+			if err := pool.QueryRow(ctx, `
+				SELECT count(*) FROM river_job WHERE state = 'available'
+			`).Scan(&n); err != nil {
+				logger.Warn("queue depth sample failed", "err", err)
+				continue
+			}
+			m.SetQueueDepth(n)
+		}
+	}
 }
 
 func newRiverClient(pool *pgxpool.Pool, workers *river.Workers) (*river.Client[pgx.Tx], error) {

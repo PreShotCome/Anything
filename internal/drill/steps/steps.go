@@ -24,6 +24,7 @@ import (
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/drill"
 	"github.com/preshotcome/anything/internal/evidence"
+	"github.com/preshotcome/anything/internal/obs"
 	"github.com/preshotcome/anything/internal/report"
 	"github.com/preshotcome/anything/internal/runner"
 	"github.com/preshotcome/anything/internal/webhooks"
@@ -40,6 +41,21 @@ type Deps struct {
 	// Webhooks fans drill.completed/drill.failed out to customer endpoints.
 	// Optional: nil disables webhook dispatch (e.g. in unit tests).
 	Webhooks *webhooks.Dispatcher
+	// Metrics records drill outcomes. Optional: nil disables metric
+	// recording (e.g. in unit tests).
+	Metrics *obs.Metrics
+}
+
+// recordDrillMetric records a terminal drill outcome, if metrics are wired.
+func (d Deps) recordDrillMetric(status string, dr drill.Drill) {
+	if d.Metrics == nil {
+		return
+	}
+	var dur time.Duration
+	if dr.StartedAt != nil {
+		dur = time.Since(*dr.StartedAt)
+	}
+	d.Metrics.RecordDrill(status, dur)
 }
 
 // Register attaches every step worker to the given River workers registry.
@@ -129,6 +145,8 @@ type ProvisionWorker struct {
 
 func (w *ProvisionWorker) Work(ctx context.Context, job *river.Job[drill.ProvisionArgs]) error {
 	drillID := job.Args.DrillID
+	ctx, endSpan := obs.StartSpan(ctx, "drill.provision", map[string]string{"drill.id": drillID.String()})
+	defer endSpan()
 	if done, err := w.D.alreadyDone(ctx, drillID, drill.StepProvision); err != nil {
 		return err
 	} else if done {
@@ -173,6 +191,8 @@ type FetchWorker struct {
 
 func (w *FetchWorker) Work(ctx context.Context, job *river.Job[drill.FetchArgs]) error {
 	drillID := job.Args.DrillID
+	ctx, endSpan := obs.StartSpan(ctx, "drill.fetch", map[string]string{"drill.id": drillID.String()})
+	defer endSpan()
 	if done, err := w.D.alreadyDone(ctx, drillID, drill.StepFetch); err != nil {
 		return err
 	} else if done {
@@ -237,6 +257,8 @@ type RestoreWorker struct {
 
 func (w *RestoreWorker) Work(ctx context.Context, job *river.Job[drill.RestoreArgs]) error {
 	drillID := job.Args.DrillID
+	ctx, endSpan := obs.StartSpan(ctx, "drill.restore", map[string]string{"drill.id": drillID.String()})
+	defer endSpan()
 	if done, err := w.D.alreadyDone(ctx, drillID, drill.StepRestore); err != nil {
 		return err
 	} else if done {
@@ -275,6 +297,8 @@ type AssertWorker struct {
 
 func (w *AssertWorker) Work(ctx context.Context, job *river.Job[drill.AssertArgs]) error {
 	drillID := job.Args.DrillID
+	ctx, endSpan := obs.StartSpan(ctx, "drill.assert", map[string]string{"drill.id": drillID.String()})
+	defer endSpan()
 	if done, err := w.D.alreadyDone(ctx, drillID, drill.StepAssert); err != nil {
 		return err
 	} else if done {
@@ -336,6 +360,8 @@ type ReportWorker struct {
 
 func (w *ReportWorker) Work(ctx context.Context, job *river.Job[drill.ReportArgs]) error {
 	drillID := job.Args.DrillID
+	ctx, endSpan := obs.StartSpan(ctx, "drill.report", map[string]string{"drill.id": drillID.String()})
+	defer endSpan()
 	if done, err := w.D.alreadyDone(ctx, drillID, drill.StepReport); err != nil {
 		return err
 	} else if done {
@@ -431,6 +457,8 @@ type TeardownWorker struct {
 
 func (w *TeardownWorker) Work(ctx context.Context, job *river.Job[drill.TeardownArgs]) error {
 	drillID := job.Args.DrillID
+	ctx, endSpan := obs.StartSpan(ctx, "drill.teardown", map[string]string{"drill.id": drillID.String()})
+	defer endSpan()
 
 	dr, err := w.D.Store.GetDrillByID(ctx, drillID)
 	if err != nil {
@@ -466,6 +494,7 @@ func (w *TeardownWorker) Work(ctx context.Context, job *river.Job[drill.Teardown
 			TargetKind: "drill", TargetID: drillID.String(),
 			Metadata: map[string]any{"reason": job.Args.FailureReason},
 		})
+		w.D.recordDrillMetric("failed", dr)
 		w.D.dispatchWebhook(ctx, acct, "drill.failed", map[string]any{
 			"drill_id": drillID.String(),
 			"reason":   job.Args.FailureReason,
@@ -474,6 +503,7 @@ func (w *TeardownWorker) Work(ctx context.Context, job *river.Job[drill.Teardown
 	}
 	if dr.Status == drill.StatusFailed {
 		// Already marked by report worker for assertion failures.
+		w.D.recordDrillMetric("failed", dr)
 		w.D.dispatchWebhook(ctx, acct, "drill.failed", map[string]any{
 			"drill_id": drillID.String(),
 			"reason":   "assertion_failed",
@@ -498,6 +528,7 @@ func (w *TeardownWorker) Work(ctx context.Context, job *river.Job[drill.Teardown
 		ActorID:   &dr.CreatedByUserID, Action: "drill.completed",
 		TargetKind: "drill", TargetID: drillID.String(),
 	})
+	w.D.recordDrillMetric("succeeded", dr)
 	w.D.dispatchWebhook(ctx, acct, "drill.completed", map[string]any{
 		"drill_id": drillID.String(),
 		"status":   "succeeded",

@@ -18,6 +18,7 @@ type Config struct {
 	EvidenceDir        string
 	StripeSecretKey    string
 	EvidenceSigningKey string
+	SentryDSN          string
 }
 
 func Load() (Config, error) {
@@ -30,6 +31,7 @@ func Load() (Config, error) {
 		EvidenceDir:        getenv("EVIDENCE_DIR", "tmp/evidence"),
 		StripeSecretKey:    os.Getenv("STRIPE_SECRET_KEY"),
 		EvidenceSigningKey: os.Getenv("EVIDENCE_SIGNING_KEY"),
+		SentryDSN:          os.Getenv("SENTRY_DSN"),
 	}
 
 	if c.DatabaseURL == "" {

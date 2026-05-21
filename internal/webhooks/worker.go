@@ -21,13 +21,20 @@ type DeliverArgs struct {
 
 func (DeliverArgs) Kind() string { return "webhook.deliver" }
 
+// DeliveryMetrics is the metric sink for delivery outcomes. The obs.Metrics
+// type satisfies it; nil disables recording (tests).
+type DeliveryMetrics interface {
+	RecordWebhookDelivery(outcome string)
+}
+
 // DeliverWorker performs one HTTP POST attempt. A non-2xx response or a
 // transport error returns an error so River retries with backoff; the
 // delivery row records every attempt either way.
 type DeliverWorker struct {
 	river.WorkerDefaults[DeliverArgs]
-	Store *Store
-	HTTP  *http.Client
+	Store   *Store
+	HTTP    *http.Client
+	Metrics DeliveryMetrics
 }
 
 // NewDeliverWorker wires a worker with a sane default HTTP client.
@@ -35,6 +42,12 @@ func NewDeliverWorker(store *Store) *DeliverWorker {
 	return &DeliverWorker{
 		Store: store,
 		HTTP:  &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+func (w *DeliverWorker) recordOutcome(outcome string) {
+	if w.Metrics != nil {
+		w.Metrics.RecordWebhookDelivery(outcome)
 	}
 }
 
@@ -62,6 +75,7 @@ func (w *DeliverWorker) Work(ctx context.Context, job *river.Job[DeliverArgs]) e
 	statusCode, attemptErr := w.post(ctx, endpoint, d)
 	if attemptErr == nil && statusCode >= 200 && statusCode < 300 {
 		_ = w.Store.RecordAttempt(ctx, d.ID, StatusDelivered, statusCode, "")
+		w.recordOutcome("delivered")
 		return nil
 	}
 
@@ -72,6 +86,7 @@ func (w *DeliverWorker) Work(ctx context.Context, job *river.Job[DeliverArgs]) e
 		reason = fmt.Sprintf("non-2xx response: %d", statusCode)
 	}
 	_ = w.Store.RecordAttempt(ctx, d.ID, StatusFailed, statusCode, reason)
+	w.recordOutcome("failed")
 
 	// Return an error so River retries (up to its MaxAttempts). The status
 	// stays "failed" between attempts; a later success flips it to delivered.

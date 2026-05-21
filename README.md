@@ -9,8 +9,9 @@ The marketing site lives in a separate repo.
 
 ## Status
 
-Phase 5 — compliance. Evidence PDFs are cryptographically signed and
-retained; the GDPR/CCPA data-rights endpoints (export + delete) are wired.
+Phase 6 — observability. Structured request logs, Prometheus metrics,
+OpenTelemetry tracing, error reporting, and readiness probes, plus the
+incident runbook and dashboard/alert IaC.
 
 Implemented:
 - Chi + Templ + HTMX + Tailwind monolith
@@ -34,6 +35,11 @@ Implemented:
 - Retention sweeper (River periodic job) — evidence/audit 7y, login attempts 30d
 - GDPR/CCPA: JSON data export + account soft-delete → hard-delete (crypto-shred)
 - Placeholder legal pages (Terms / Privacy / DPA)
+- Structured JSON request logs with trace_id / account_id correlation
+- Prometheus metrics at `/metrics` (HTTP, drills, webhooks, queue depth)
+- OpenTelemetry tracing — HTTP + drill-step spans (OTLP / stdout / noop)
+- Error reporting via a Sentry seam (noop fallback); `/readyz` probe
+- Incident runbook + Grafana dashboard + Prometheus alert rules
 
 ## Local development
 
@@ -78,6 +84,7 @@ internal/ratelimit       token-bucket limiter + middleware
 internal/webhooks        signed webhook endpoints, delivery worker, dispatch
 internal/evidence        evidence store + Ed25519 signing + retention
 internal/compliance      GDPR export, account purge, retention sweeper
+internal/obs             logging, metrics, tracing, error reporting
 internal/db              pgx pool, transaction helpers
 internal/drill           drill domain (targets, drills, steps, results)
 internal/drill/steps     River workers for each pipeline step
@@ -88,6 +95,7 @@ internal/web             handlers + Templ templates
 internal/web/csrf        CSRF double-submit middleware
 migrations               goose SQL migrations
 runbooks                 operational runbooks
+dashboards               Grafana dashboard + Prometheus alert rules
 testdata/fixtures        seeded pg_dump used by local dev + CI
 assets                   Tailwind input, static files (HTMX, app.css)
 ```

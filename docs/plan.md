@@ -436,3 +436,48 @@ API calls (all seams); OTel (P6); marketing site (P7).
 
 ### When you're done
 Commit on `claude/restore-drill-phase-2-vHjzy`. Push and stop — no PR.
+
+---
+
+## Phase 6 — Observability
+
+### Goal
+Make the app observable in production: structured request logs, Prometheus
+metrics, distributed tracing, error tracking, readiness probes, plus the
+incident runbook and dashboard/alert IaC. External backends (Grafana, an
+OTLP collector, Sentry) are config-gated seams with verifiable local
+fallbacks.
+
+### Locked decisions
+- **Logging:** a slog request-logging middleware — one JSON line per
+  request with request_id, method, route, status, duration_ms, account_id,
+  trace_id.
+- **Metrics:** Prometheus at `GET /metrics` via `prometheus/client_golang`.
+  HTTP (count + latency by route/status), drills (terminal-status counter +
+  duration histogram), webhook deliveries, River queue depth gauge.
+- **Tracing:** OpenTelemetry SDK. HTTP middleware + per-drill-step spans.
+  Exporter by `OTEL_TRACES_EXPORTER`: otlp / stdout / noop (default).
+  trace_id flows into the request log.
+- **Errors:** `obs.ErrorReporter` interface — `SentryReporter` gated on
+  `SENTRY_DSN`, `NoopReporter` fallback. Recoverer reports panics.
+- **Health:** `/healthz` liveness; `/readyz` pings the DB pool.
+- **Ops docs:** `runbooks/incident-response.md`; `dashboards/` holds a
+  Grafana dashboard JSON + Prometheus alert rules.
+
+### Deliverables
+1. `internal/obs` — logging, metrics, tracing, errors, Provider + Setup.
+2. Router wired: tracing → request log → metrics → Recoverer; `/metrics`,
+   `/readyz`.
+3. Drill step workers emit spans; teardown records drill metrics; webhook
+   worker records delivery metrics; queue-depth sampler.
+4. `runbooks/incident-response.md`, `dashboards/restore-drill.json`,
+   `dashboards/alerts.yml`.
+5. Tests: readiness ready/not-ready, Recoverer captures panics, metrics
+   middleware + drill/webhook/queue recording, Noop reporter fallback.
+
+### Out of scope
+Running a real collector / Grafana / Sentry; PostHog product analytics
+(layer 9); the external status page.
+
+### When you're done
+Commit on `claude/restore-drill-phase-2-vHjzy`. Push and stop — no PR.
