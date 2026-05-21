@@ -5,8 +5,8 @@ import (
 	"io"
 )
 
-// jsonDecode is a tiny shim so stripe.go can take an interface that's
-// satisfied by both *bytes.Buffer (tests) and *http.Response.Body.
-func jsonDecode(r interface{ Read([]byte) (int, error) }, into any) error {
-	return json.NewDecoder(r.(io.Reader)).Decode(into)
+// jsonDecode is a tiny shim so stripe.go can decode from anything readable —
+// *bytes.Buffer in tests, *http.Response.Body in production.
+func jsonDecode(r io.Reader, into any) error {
+	return json.NewDecoder(r).Decode(into)
 }

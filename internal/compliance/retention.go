@@ -2,6 +2,8 @@ package compliance
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -43,58 +45,61 @@ type SweepResult struct {
 	MagicLinksPruned   int64
 }
 
-// Sweep runs one retention pass. Each step is independent; a failure in one
-// is returned but does not skip the others already done.
+// Sweep runs one retention pass. Each step is independent: a failure in one
+// is collected but does not skip the others, so a single broken table can't
+// stall all pruning. Any errors are joined and returned together.
 func (s *Sweeper) Sweep(ctx context.Context) (SweepResult, error) {
 	var res SweepResult
+	var errs []error
 
 	n, err := s.evidence.PurgeExpired(ctx)
 	res.EvidencePurged = n
 	if err != nil {
-		return res, err
+		errs = append(errs, fmt.Errorf("purge evidence: %w", err))
 	}
 
-	tag, err := s.pool.Exec(ctx, `
+	if tag, err := s.pool.Exec(ctx, `
 		DELETE FROM audit_events WHERE at < $1
-	`, time.Now().UTC().Add(-AuditRetention))
-	if err != nil {
-		return res, err
+	`, time.Now().UTC().Add(-AuditRetention)); err != nil {
+		errs = append(errs, fmt.Errorf("prune audit_events: %w", err))
+	} else {
+		res.AuditPruned = tag.RowsAffected()
 	}
-	res.AuditPruned = tag.RowsAffected()
 
 	if err := s.throttle.Prune(ctx, LoginAttemptsRetention); err != nil {
-		return res, err
+		errs = append(errs, fmt.Errorf("prune login_attempts: %w", err))
+	} else {
+		res.LoginsPruned = -1 // -1 = "ran, count not tracked"
 	}
-	res.LoginsPruned = -1 // -1 = "ran, count not tracked"
 
-	idemTag, err := s.pool.Exec(ctx, `
+	if tag, err := s.pool.Exec(ctx, `
 		DELETE FROM api_idempotency WHERE created_at < $1
-	`, time.Now().UTC().Add(-APIIdempotencyRetention))
-	if err != nil {
-		return res, err
+	`, time.Now().UTC().Add(-APIIdempotencyRetention)); err != nil {
+		errs = append(errs, fmt.Errorf("prune api_idempotency: %w", err))
+	} else {
+		res.IdempotencyPruned = tag.RowsAffected()
 	}
-	res.IdempotencyPruned = idemTag.RowsAffected()
 
 	// Email-verification tokens carry their own expiry; once past it they are
 	// dead weight.
-	verifyTag, err := s.pool.Exec(ctx, `
+	if tag, err := s.pool.Exec(ctx, `
 		DELETE FROM email_verification_tokens WHERE expires_at < now()
-	`)
-	if err != nil {
-		return res, err
+	`); err != nil {
+		errs = append(errs, fmt.Errorf("prune email_verification_tokens: %w", err))
+	} else {
+		res.VerifyTokensPruned = tag.RowsAffected()
 	}
-	res.VerifyTokensPruned = verifyTag.RowsAffected()
 
 	// Magic-link tokens carry a short expiry; once past it they are dead.
-	magicTag, err := s.pool.Exec(ctx, `
+	if tag, err := s.pool.Exec(ctx, `
 		DELETE FROM magic_link_tokens WHERE expires_at < now()
-	`)
-	if err != nil {
-		return res, err
+	`); err != nil {
+		errs = append(errs, fmt.Errorf("prune magic_link_tokens: %w", err))
+	} else {
+		res.MagicLinksPruned = tag.RowsAffected()
 	}
-	res.MagicLinksPruned = magicTag.RowsAffected()
 
-	return res, nil
+	return res, errors.Join(errs...)
 }
 
 // --- River periodic job ---

@@ -33,6 +33,10 @@ func (f *FlyMachineRunner) Restore(_ context.Context, _ *Sandbox, _ string) erro
 	return ErrNotImplemented
 }
 
+func (f *FlyMachineRunner) Rehydrate(_ uuid.UUID, _ string) (*Sandbox, error) {
+	return nil, ErrNotImplemented
+}
+
 func (f *FlyMachineRunner) Teardown(_ context.Context, _ *Sandbox) error {
 	return ErrNotImplemented
 }

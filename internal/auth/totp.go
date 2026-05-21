@@ -63,20 +63,30 @@ func TOTPCode(secret string, t time.Time) (string, error) {
 // VerifyTOTP reports whether code is valid for secret at time t, allowing a
 // ±1 step (±30s) skew for clock drift between the server and the device.
 func VerifyTOTP(secret, code string, t time.Time) bool {
+	_, ok := VerifyTOTPWithCounter(secret, code, t)
+	return ok
+}
+
+// VerifyTOTPWithCounter is VerifyTOTP but also returns the time-step counter
+// the code matched. Callers persist that counter to reject replays: a code is
+// valid across a ±1-step window (~90s), so without replay tracking an
+// observed code could be re-used until it expires.
+func VerifyTOTPWithCounter(secret, code string, t time.Time) (int64, bool) {
 	code = strings.TrimSpace(code)
 	if len(code) != totpDigits {
-		return false
+		return 0, false
 	}
 	for _, skew := range []time.Duration{0, -totpPeriod, totpPeriod} {
-		want, err := TOTPCode(secret, t.Add(skew))
+		at := t.Add(skew)
+		want, err := TOTPCode(secret, at)
 		if err != nil {
-			return false
+			return 0, false
 		}
 		if hmac.Equal([]byte(want), []byte(code)) {
-			return true
+			return int64(uint64(at.UTC().Unix()) / uint64(totpPeriod.Seconds())), true
 		}
 	}
-	return false
+	return 0, false
 }
 
 // TOTPURI builds the otpauth:// URI an authenticator app imports — usually as

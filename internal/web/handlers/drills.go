@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -37,6 +38,39 @@ func (h *Handlers) targetNewPage(w http.ResponseWriter, r *http.Request) {
 	render(w, r, templates.TargetNewForm(h.layoutCtx(r), templates.TargetFormValues{}, ""))
 }
 
+// resolveSourcePath validates a customer-supplied dump path. The path must
+// resolve to an existing file *inside* the configured backups directory:
+// confinement stops a target from pointing the drill runner at arbitrary
+// server files (and the errors never echo the path, so they can't be used as
+// a filesystem oracle). Returns the cleaned absolute path.
+func (h *Handlers) resolveSourcePath(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return "", errors.New("a source file path is required")
+	}
+	root, err := filepath.Abs(h.sourceDir)
+	if err != nil {
+		return "", errors.New("the server's backups directory is misconfigured")
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", errors.New("that source path is not valid")
+	}
+	abs = filepath.Clean(abs)
+	rel, err := filepath.Rel(root, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.New("source files must live inside the server's backups directory")
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return "", errors.New("no readable file was found at that path")
+	}
+	if info.IsDir() {
+		return "", errors.New("the source path is a directory, not a file")
+	}
+	return abs, nil
+}
+
 func (h *Handlers) targetCreate(w http.ResponseWriter, r *http.Request) {
 	lc := h.layoutCtx(r)
 	u, acct := lc.User, lc.Account
@@ -53,9 +87,10 @@ func (h *Handlers) targetCreate(w http.ResponseWriter, r *http.Request) {
 		render(w, r, templates.TargetNewForm(lc, values, "Name and source path are required."))
 		return
 	}
-	if _, err := os.Stat(values.SourceURI); err != nil {
+	cleanPath, err := h.resolveSourcePath(values.SourceURI)
+	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		render(w, r, templates.TargetNewForm(lc, values, "Source file not found: "+values.SourceURI))
+		render(w, r, templates.TargetNewForm(lc, values, err.Error()))
 		return
 	}
 
@@ -64,7 +99,7 @@ func (h *Handlers) targetCreate(w http.ResponseWriter, r *http.Request) {
 		CreatedByUserID: u.ID,
 		Name:            values.Name,
 		SourceKind:      "postgres_dump_local",
-		SourceURI:       values.SourceURI,
+		SourceURI:       cleanPath,
 	})
 	if err != nil {
 		http.Error(w, "create target: "+err.Error(), http.StatusInternalServerError)

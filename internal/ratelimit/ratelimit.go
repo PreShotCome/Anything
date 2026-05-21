@@ -28,8 +28,16 @@ type bucket struct {
 }
 
 // New returns a limiter that allows `burst` requests immediately and then
-// refills at `perMinute` requests per minute.
+// refills at `perMinute` requests per minute. perMinute and burst are clamped
+// to at least 1: a zero rate would divide by zero when computing Retry-After
+// and leave buckets that never refill.
 func New(perMinute, burst int) *Limiter {
+	if perMinute < 1 {
+		perMinute = 1
+	}
+	if burst < 1 {
+		burst = 1
+	}
 	l := &Limiter{
 		rate:    float64(perMinute) / 60.0,
 		burst:   float64(burst),

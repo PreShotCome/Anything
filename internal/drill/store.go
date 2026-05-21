@@ -501,11 +501,14 @@ func (s *Store) MarkStepRunning(ctx context.Context, drillID uuid.UUID, name Ste
 	return err
 }
 
+// MarkStepSucceeded flips a step to succeeded. A 'skipped' step is never
+// resurrected — once a failure skips the rest of the pipeline, a stray
+// retried job for one of those steps cannot mark it succeeded.
 func (s *Store) MarkStepSucceeded(ctx context.Context, drillID uuid.UUID, name StepName) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE drill_steps
 		   SET status = 'succeeded', completed_at = now(), error = NULL
-		 WHERE drill_id = $1 AND name = $2
+		 WHERE drill_id = $1 AND name = $2 AND status <> 'skipped'
 	`, drillID, name)
 	return err
 }

@@ -30,9 +30,10 @@ func TestMFAEnableDisable(t *testing.T) {
 	if err := store.EnableMFA(ctx, userID, secret); err != nil {
 		t.Fatalf("EnableMFA: %v", err)
 	}
-	got, err := store.TOTPSecret(ctx, userID)
-	if err != nil || got != secret {
-		t.Fatalf("TOTPSecret = %q, %v; want %q", got, err, secret)
+	// Confirm the secret round-tripped by verifying a code against it.
+	code, _ := TOTPCode(secret, time.Now())
+	if ok, err := store.VerifyAndConsumeTOTP(ctx, userID, code); err != nil || !ok {
+		t.Fatalf("a code for the stored secret should verify: ok=%v err=%v", ok, err)
 	}
 	if u, _ := store.LoadUserByID(ctx, userID); !u.MFAEnabled {
 		t.Fatal("user should report MFAEnabled after EnableMFA")
@@ -62,6 +63,36 @@ func TestMFAEnableDisable(t *testing.T) {
 	}
 	if ok, _ := store.ConsumeRecoveryCode(ctx, userID, codes[1]); ok {
 		t.Fatal("recovery codes should be gone after disable")
+	}
+}
+
+func TestVerifyAndConsumeTOTPRejectsReplay(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+
+	userID := seedAuthUser(t, ctx, pool, false)
+	store := NewStore(pool, 14*24*time.Hour, 30*24*time.Hour, false)
+
+	secret, _ := GenerateTOTPSecret()
+	if err := store.EnableMFA(ctx, userID, secret); err != nil {
+		t.Fatalf("EnableMFA: %v", err)
+	}
+	code, _ := TOTPCode(secret, time.Now())
+
+	if ok, err := store.VerifyAndConsumeTOTP(ctx, userID, code); err != nil || !ok {
+		t.Fatalf("first use of a valid code = %v, %v; want true", ok, err)
+	}
+	// The same code is still inside its ~90s window, but replaying it must fail.
+	if ok, err := store.VerifyAndConsumeTOTP(ctx, userID, code); err != nil || ok {
+		t.Fatalf("replayed code = %v, %v; want false", ok, err)
 	}
 }
 
@@ -104,18 +135,30 @@ func TestMFAPendingSessionFlow(t *testing.T) {
 		t.Fatalf("PendingMFAUser = %v, %v; want user %s", u, err, userID)
 	}
 
-	// Completing MFA promotes the session to fully authenticated.
-	if err := store.CompleteMFA(ctx, withCookie()); err != nil {
+	// Completing MFA rotates the session: the old token is destroyed and a
+	// fresh, fully authenticated session is issued under a new cookie.
+	rec2 := httptest.NewRecorder()
+	if err := store.CompleteMFA(ctx, rec2, withCookie()); err != nil {
 		t.Fatalf("CompleteMFA: %v", err)
 	}
-	_, sess, err = store.Lookup(ctx, withCookie())
+	if _, _, err := store.Lookup(ctx, withCookie()); err == nil {
+		t.Fatal("the pre-MFA session should be destroyed after CompleteMFA")
+	}
+
+	newCookie := rec2.Result().Cookies()[0]
+	if newCookie.Value == cookie.Value {
+		t.Fatal("CompleteMFA must issue a new session token")
+	}
+	newReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	newReq.AddCookie(newCookie)
+	u2, sess2, err := store.Lookup(ctx, newReq)
 	if err != nil {
-		t.Fatalf("Lookup after CompleteMFA: %v", err)
+		t.Fatalf("Lookup of the rotated session: %v", err)
 	}
-	if sess.MFAPending {
-		t.Fatal("session should not be pending after CompleteMFA")
+	if sess2.MFAPending {
+		t.Fatal("the rotated session must not be pending")
 	}
-	if _, err := store.PendingMFAUser(ctx, withCookie()); err == nil {
-		t.Fatal("PendingMFAUser should not resolve a completed session")
+	if u2.ID != userID {
+		t.Fatalf("rotated session user = %s, want %s", u2.ID, userID)
 	}
 }

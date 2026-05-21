@@ -91,66 +91,129 @@ func Render(out io.Writer, d Data) error {
 	return pdf.Output(out)
 }
 
-func stepsTable(pdf *fpdf.Fpdf, steps []drill.Step) {
-	pdf.SetFont("Helvetica", "B", 9)
-	pdf.SetFillColor(240, 240, 240)
-	pdf.CellFormat(45, 6, "Name", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(25, 6, "Status", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(40, 6, "Started", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(40, 6, "Completed", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(0, 6, "Duration", "1", 1, "L", true, 0, "")
+// tableLineH is the height of one wrapped line of body text, in mm.
+const tableLineH = 5.0
 
-	pdf.SetFont("Helvetica", "", 9)
-	if len(steps) == 0 {
-		pdf.CellFormat(0, 6, "(no steps recorded)", "1", 1, "L", false, 0, "")
+// table renders a bordered, word-wrapping table that paginates: when a row
+// would cross the bottom margin a new page is started and the column header
+// is repeated — so a long assertions list is never clipped or run off-page.
+func table(pdf *fpdf.Fpdf, widths []float64, header []string, rows [][]string, emptyMsg string) {
+	drawHeader := func() {
+		pdf.SetFont("Helvetica", "B", 9)
+		pdf.SetFillColor(240, 240, 240)
+		tableRow(pdf, widths, header, true, nil)
+		pdf.SetFont("Helvetica", "", 9)
+	}
+	drawHeader()
+	if len(rows) == 0 {
+		var total float64
+		for _, w := range widths {
+			total += w
+		}
+		pdf.CellFormat(total, 6, emptyMsg, "1", 1, "L", false, 0, "")
 		return
 	}
-	for _, s := range steps {
-		pdf.CellFormat(45, 6, string(s.Name), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(25, 6, string(s.Status), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(40, 6, fmtTime(s.StartedAt), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(40, 6, fmtTime(s.CompletedAt), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(0, 6, duration(s.StartedAt, s.CompletedAt), "1", 1, "L", false, 0, "")
+	for _, row := range rows {
+		tableRow(pdf, widths, row, false, drawHeader)
 	}
 }
 
-func assertionsTable(pdf *fpdf.Fpdf, ars []drill.AssertionResult) {
-	pdf.SetFont("Helvetica", "B", 9)
-	pdf.SetFillColor(240, 240, 240)
-	pdf.CellFormat(30, 6, "Kind", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(70, 6, "Expected", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(60, 6, "Actual", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(0, 6, "Result", "1", 1, "L", true, 0, "")
-
-	pdf.SetFont("Helvetica", "", 9)
-	if len(ars) == 0 {
-		pdf.CellFormat(0, 6, "(no assertions ran)", "1", 1, "L", false, 0, "")
-		return
+// tableRow draws one row whose cells wrap to their column width. It measures
+// the tallest column first and, if the row won't fit, starts a new page
+// (re-drawing the header via onNewPage) before drawing — so rows are never
+// split across a page boundary.
+func tableRow(pdf *fpdf.Fpdf, widths []float64, cells []string, fill bool, onNewPage func()) {
+	maxLines := 1
+	for i, c := range cells {
+		// SplitText indexes a 256-entry core-font width table by raw rune, so
+		// it panics on any rune > 0xFF — measure a Latin-1-safe copy.
+		if n := len(pdf.SplitText(latin1(c), widths[i]-2)); n > maxLines {
+			maxLines = n
+		}
 	}
+	rowH := float64(maxLines) * tableLineH
+
+	lMargin, _, _, bMargin := pdf.GetMargins()
+	_, pageH := pdf.GetPageSize()
+	if pdf.GetY()+rowH > pageH-bMargin {
+		pdf.AddPage()
+		if onNewPage != nil {
+			onNewPage()
+		}
+	}
+
+	style := "D"
+	if fill {
+		style = "FD"
+	}
+	x, y := pdf.GetX(), pdf.GetY()
+	for i, c := range cells {
+		pdf.Rect(x, y, widths[i], rowH, style)
+		pdf.SetXY(x+1, y+1)
+		pdf.MultiCell(widths[i]-2, tableLineH, c, "", "L", false)
+		x += widths[i]
+	}
+	pdf.SetXY(lMargin, y+rowH)
+}
+
+func stepsTable(pdf *fpdf.Fpdf, steps []drill.Step) {
+	rows := make([][]string, 0, len(steps))
+	for _, s := range steps {
+		rows = append(rows, []string{
+			string(s.Name), string(s.Status),
+			fmtTime(s.StartedAt), fmtTime(s.CompletedAt),
+			duration(s.StartedAt, s.CompletedAt),
+		})
+	}
+	table(pdf, []float64{45, 25, 40, 40, 30},
+		[]string{"Name", "Status", "Started", "Completed", "Duration"},
+		rows, "(no steps recorded)")
+}
+
+func assertionsTable(pdf *fpdf.Fpdf, ars []drill.AssertionResult) {
+	rows := make([][]string, 0, len(ars))
 	for _, ar := range ars {
 		result := "PASS"
 		if !ar.Passed {
 			result = "FAIL"
 		}
-		pdf.CellFormat(30, 6, ar.Kind, "1", 0, "L", false, 0, "")
-		pdf.CellFormat(70, 6, prettyJSON(ar.Expected), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(60, 6, prettyJSON(ar.Actual), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(0, 6, result, "1", 1, "L", false, 0, "")
+		rows = append(rows, []string{ar.Kind, prettyJSON(ar.Expected), prettyJSON(ar.Actual), result})
 	}
+	table(pdf, []float64{30, 70, 60, 20},
+		[]string{"Kind", "Expected", "Actual", "Result"},
+		rows, "(no assertions ran)")
 }
 
 func fmtTime(t *time.Time) string {
 	if t == nil {
-		return "—"
+		return "-"
 	}
 	return t.UTC().Format(time.RFC3339)
 }
 
 func duration(start, end *time.Time) string {
 	if start == nil || end == nil {
-		return "—"
+		return "-"
 	}
 	return end.Sub(*start).Round(time.Millisecond).String()
+}
+
+// latin1 replaces runes outside the core-font (cp1252) range so fpdf text
+// measurement cannot panic on, e.g., a unicode character in error text.
+func latin1(s string) string {
+	for _, r := range s {
+		if r > 0xFF {
+			safe := make([]rune, 0, len(s))
+			for _, r := range s {
+				if r > 0xFF {
+					r = '?'
+				}
+				safe = append(safe, r)
+			}
+			return string(safe)
+		}
+	}
+	return s
 }
 
 func prettyJSON(b []byte) string {

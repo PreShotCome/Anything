@@ -56,6 +56,7 @@ type Handlers struct {
 	metricsToken         string
 	apiKeys              *apikey.Store
 	v1Limiter            *ratelimit.Limiter
+	sourceDir            string
 }
 
 type Deps struct {
@@ -86,6 +87,7 @@ type Deps struct {
 	MetricsToken         string
 	APIKeys              *apikey.Store
 	V1Limiter            *ratelimit.Limiter
+	SourceDir            string
 }
 
 func New(d Deps) *Handlers {
@@ -121,6 +123,7 @@ func New(d Deps) *Handlers {
 		metricsToken:         d.MetricsToken,
 		apiKeys:              d.APIKeys,
 		v1Limiter:            d.V1Limiter,
+		sourceDir:            d.SourceDir,
 	}
 }
 
@@ -158,6 +161,7 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 	r.Use(h.obs.Metrics.Middleware)      // request count + latency
 	r.Use(h.obs.Recoverer)               // panic → error reporter → 500
 	r.Use(securityHeaders)
+	r.Use(limitRequestBody)
 	r.Use(h.sessions.LoadUser)
 	r.Use(h.sessions.LoadCurrentAccount(h.accounts))
 	r.Use(stampAccountForLogs) // enrich the request log with account_id
@@ -369,6 +373,21 @@ func accountKey(r *http.Request) string {
 
 // securityHeaders sets a baseline set of headers. CSP is intentionally strict;
 // inline scripts are not allowed. Tighten further per route as needed.
+// maxRequestBody caps the request body for every route. Form handlers call
+// r.ParseForm(), which buffers the whole body into memory, so without a cap an
+// unauthenticated multi-gigabyte POST is a trivial memory-exhaustion DoS. JSON
+// handlers apply their own (smaller) io.LimitReader on top of this.
+const maxRequestBody = 2 << 20 // 2 MiB
+
+func limitRequestBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()

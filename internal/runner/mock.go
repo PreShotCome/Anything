@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -31,9 +32,16 @@ func NewLocalRunner(adminDSN string) *LocalRunner {
 
 // Provision creates an isolated database named drill_<short>. We connect with
 // the admin DSN, run CREATE DATABASE, then hand back a DSN scoped to it.
+//
+// The sandbox name is deterministic per drill, so Provision is idempotent: a
+// retry (after a transient failure recording the name) drops any half-created
+// leftover first, rather than failing on "database already exists".
 func (r *LocalRunner) Provision(ctx context.Context, drillID uuid.UUID) (*Sandbox, error) {
 	dbName := "drill_" + strings.ReplaceAll(drillID.String(), "-", "")[:16]
 
+	if err := r.execAdmin(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS %q WITH (FORCE)`, dbName)); err != nil {
+		return nil, fmt.Errorf("drop stale sandbox db: %w", err)
+	}
 	if err := r.execAdmin(ctx, fmt.Sprintf(`CREATE DATABASE %q`, dbName)); err != nil {
 		return nil, fmt.Errorf("create sandbox db: %w", err)
 	}
@@ -64,26 +72,41 @@ func (r *LocalRunner) Fetch(ctx context.Context, _ *Sandbox, sourceURI string) (
 	return abs, nil
 }
 
-// Restore applies the dump at localPath to the sandbox. Two formats supported:
-//   - .sql (plain text) — applied with psql so script-style \i etc. work.
-//   - .dump (pg_dump custom/-Fc) — applied with pg_restore.
-//
-// Anything else falls back to pg_restore, which sniffs the format itself.
+// Restore applies the dump at localPath to the sandbox. The format is decided
+// by sniffing the file's magic header, not its extension: a pg_dump
+// custom-format archive ("PGDMP" magic) is applied with pg_restore, anything
+// else with psql. Sniffing means a misnamed file is restored with the right
+// tool instead of failing — or worse, restoring partially while looking fine.
 func (r *LocalRunner) Restore(ctx context.Context, sb *Sandbox, localPath string) error {
-	ext := strings.ToLower(filepath.Ext(localPath))
-
-	switch ext {
-	case ".sql":
-		cmd := exec.CommandContext(ctx, "psql", "--quiet", "--no-psqlrc",
-			"--set=ON_ERROR_STOP=1", "-d", sb.DSN, "-f", localPath)
-		return runDumpCmd(cmd, "psql")
-	default:
+	custom, err := isCustomFormatDump(localPath)
+	if err != nil {
+		return err
+	}
+	if custom {
 		cmd := exec.CommandContext(ctx, "pg_restore",
-			"--no-owner", "--no-privileges",
-			"--exit-on-error",
+			"--no-owner", "--no-privileges", "--exit-on-error",
 			"-d", sb.DSN, localPath)
 		return runDumpCmd(cmd, "pg_restore")
 	}
+	cmd := exec.CommandContext(ctx, "psql", "--quiet", "--no-psqlrc",
+		"--set=ON_ERROR_STOP=1", "-d", sb.DSN, "-f", localPath)
+	return runDumpCmd(cmd, "psql")
+}
+
+// isCustomFormatDump reports whether the file at path is a pg_dump custom-
+// or directory-format archive, identified by the 5-byte "PGDMP" magic header.
+func isCustomFormatDump(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, fmt.Errorf("open dump: %w", err)
+	}
+	defer f.Close()
+	magic := make([]byte, 5)
+	n, err := io.ReadFull(f, magic)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return false, fmt.Errorf("read dump header: %w", err)
+	}
+	return n == 5 && string(magic) == "PGDMP", nil
 }
 
 // Rehydrate reconstructs a Sandbox handle from a drill ID + bare DB name.

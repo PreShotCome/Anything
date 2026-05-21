@@ -44,12 +44,23 @@ func (d *Dispatcher) Dispatch(ctx context.Context, accountID uuid.UUID, event st
 		return fmt.Errorf("marshal payload: %w", err)
 	}
 
+	// A stable key per (event, source object) makes a retried fan-out
+	// idempotent: re-dispatching reuses the same delivery rows and — via
+	// River's by-args uniqueness — the same jobs, instead of double-sending.
+	// Events without an identifiable source object fall back to a unique key
+	// (no dedup).
+	eventKey := event + "|" + uuid.NewString()
+	if id, ok := data["drill_id"].(string); ok && id != "" {
+		eventKey = event + "|" + id
+	}
+
 	for _, e := range endpoints {
-		deliveryID, err := d.store.CreateDelivery(ctx, e.ID, accountID, event, payload)
+		deliveryID, err := d.store.CreateDelivery(ctx, e.ID, accountID, event, eventKey, payload)
 		if err != nil {
 			return fmt.Errorf("create delivery: %w", err)
 		}
-		if _, err := d.inserter.Insert(ctx, DeliverArgs{DeliveryID: deliveryID}, nil); err != nil {
+		if _, err := d.inserter.Insert(ctx, DeliverArgs{DeliveryID: deliveryID},
+			&river.InsertOpts{UniqueOpts: river.UniqueOpts{ByArgs: true}}); err != nil {
 			return fmt.Errorf("enqueue delivery: %w", err)
 		}
 	}

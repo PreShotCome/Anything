@@ -10,13 +10,16 @@ import (
 )
 
 type Config struct {
-	Addr               string
-	DatabaseURL        string
-	SessionKey         []byte
-	Environment        string
-	IdleTimeout        time.Duration
-	AbsoluteMaxAge     time.Duration
-	EvidenceDir        string
+	Addr           string
+	DatabaseURL    string
+	SessionKey     []byte
+	Environment    string
+	IdleTimeout    time.Duration
+	AbsoluteMaxAge time.Duration
+	EvidenceDir    string
+	// SourceDir is the only directory a database target's source dump may
+	// live under — customer-supplied paths are confined to it.
+	SourceDir          string
 	StripeSecretKey    string
 	EvidenceSigningKey string
 	// EvidenceVerificationKeys holds zero or more concatenated PEM public-key
@@ -42,6 +45,7 @@ func Load() (Config, error) {
 		IdleTimeout:              14 * 24 * time.Hour,
 		AbsoluteMaxAge:           30 * 24 * time.Hour,
 		EvidenceDir:              getenv("EVIDENCE_DIR", "tmp/evidence"),
+		SourceDir:                getenv("SOURCE_DIR", "tmp/sources"),
 		StripeSecretKey:          os.Getenv("STRIPE_SECRET_KEY"),
 		EvidenceSigningKey:       os.Getenv("EVIDENCE_SIGNING_KEY"),
 		EvidenceVerificationKeys: os.Getenv("EVIDENCE_VERIFICATION_KEYS"),
