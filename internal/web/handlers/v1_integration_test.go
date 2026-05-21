@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/uuid"
@@ -68,6 +69,8 @@ func v1TestServer(t *testing.T, pool *pgxpool.Pool) (*httptest.Server, string, u
 		orch:      drill.NewOrchestrator(drill.NewStore(pool), v1FakeInserter{}, audit.New(pool)),
 		evidence:  evidence.NewService(evidence.NewLocalStore(t.TempDir()), signer, pool),
 		v1Limiter: ratelimit.New(10000, 10000), // effectively unlimited for tests
+		// Confine source paths to the testdata fixtures directory.
+		sourceDir: filepath.Dir(mustAbsTestdata(t)),
 	}
 	srv := httptest.NewServer(h.v1Router())
 	t.Cleanup(srv.Close)

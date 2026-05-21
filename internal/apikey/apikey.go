@@ -132,9 +132,14 @@ func (s *Store) Authenticate(ctx context.Context, raw string) (Key, error) {
 		return Key{}, ErrNotFound
 	}
 	var k Key
+	// Join accounts so a key on a soft-deleted account stops authenticating
+	// — a deleted account must not keep API access alive.
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, account_id, name, key_prefix, scopes, created_by_user_id, created_at, last_used_at, revoked_at
-		  FROM api_keys WHERE key_hash = $1
+		SELECT k.id, k.account_id, k.name, k.key_prefix, k.scopes, k.created_by_user_id,
+		       k.created_at, k.last_used_at, k.revoked_at
+		  FROM api_keys k
+		  JOIN accounts a ON a.id = k.account_id
+		 WHERE k.key_hash = $1 AND a.deleted_at IS NULL
 	`, hash(raw)).Scan(&k.ID, &k.AccountID, &k.Name, &k.Prefix, &k.Scopes,
 		&k.CreatedByUserID, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt)
 	if errors.Is(err, pgx.ErrNoRows) {

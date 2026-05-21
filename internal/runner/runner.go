@@ -47,6 +47,11 @@ type Runner interface {
 	// package, so the runner stays a pure provision/restore/teardown surface.
 	Restore(ctx context.Context, sb *Sandbox, localPath string) error
 
+	// Rehydrate reconstructs a Sandbox handle from a drill ID and the bare
+	// sandbox database name persisted on the drill row — used by step workers
+	// that resumed without the in-process Sandbox from Provision.
+	Rehydrate(drillID uuid.UUID, dbName string) (*Sandbox, error)
+
 	// Teardown destroys the sandbox. Must be safe to call on a partially
 	// provisioned sandbox.
 	Teardown(ctx context.Context, sb *Sandbox) error

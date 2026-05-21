@@ -80,7 +80,7 @@ func TestWebhookDeliverySuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	deliveryID, err := store.CreateDelivery(ctx, endpoint.ID, accountID, "drill.completed", payload)
+	deliveryID, err := store.CreateDelivery(ctx, endpoint.ID, accountID, "drill.completed", "", payload)
 	if err != nil {
 		t.Fatalf("create delivery: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestWebhookDeliveryFailureMarksFailed(t *testing.T) {
 		t.Fatalf("create endpoint: %v", err)
 	}
 	payload, _ := MarshalPayload("drill.failed", accountID.String(), nil)
-	deliveryID, err := store.CreateDelivery(ctx, endpoint.ID, accountID, "drill.failed", payload)
+	deliveryID, err := store.CreateDelivery(ctx, endpoint.ID, accountID, "drill.failed", "", payload)
 	if err != nil {
 		t.Fatalf("create delivery: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestSSRFGuardBlocksPrivateTarget(t *testing.T) {
 		t.Fatalf("create endpoint: %v", err)
 	}
 	payload, _ := MarshalPayload("drill.completed", accountID.String(), nil)
-	deliveryID, err := store.CreateDelivery(ctx, endpoint.ID, accountID, "drill.completed", payload)
+	deliveryID, err := store.CreateDelivery(ctx, endpoint.ID, accountID, "drill.completed", "", payload)
 	if err != nil {
 		t.Fatalf("create delivery: %v", err)
 	}

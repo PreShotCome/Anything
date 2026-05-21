@@ -113,7 +113,8 @@ func (h *Handlers) webhookReplay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newID, err := h.webhooks.CreateDelivery(r.Context(), d.EndpointID, d.AccountID, d.Event, d.Payload)
+	// A manual replay is deliberately a fresh send — empty eventKey, no dedup.
+	newID, err := h.webhooks.CreateDelivery(r.Context(), d.EndpointID, d.AccountID, d.Event, "", d.Payload)
 	if err != nil {
 		http.Error(w, "replay: "+err.Error(), http.StatusInternalServerError)
 		return

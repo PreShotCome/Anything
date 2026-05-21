@@ -102,7 +102,7 @@ func TestInvitationLifecycle(t *testing.T) {
 	}
 
 	// Accept creates the membership.
-	if _, err := store.AcceptInvitation(ctx, raw, inviteeID); err != nil {
+	if _, err := store.AcceptInvitation(ctx, raw, inviteeID, "newbie@example.com"); err != nil {
 		t.Fatalf("accept: %v", err)
 	}
 	m, err := store.GetMembership(ctx, acct.ID, inviteeID)
@@ -114,8 +114,17 @@ func TestInvitationLifecycle(t *testing.T) {
 	}
 
 	// A second accept of the same token is rejected as gone.
-	if _, err := store.AcceptInvitation(ctx, raw, inviteeID); err != account.ErrInvitationGone {
+	if _, err := store.AcceptInvitation(ctx, raw, inviteeID, "newbie@example.com"); err != account.ErrInvitationGone {
 		t.Fatalf("re-accept = %v, want ErrInvitationGone", err)
+	}
+
+	// An invitation cannot be accepted by a mismatched email address.
+	rawWrong, _, err := store.CreateInvitation(ctx, acct.ID, ownerID, "intended@example.com", account.RoleViewer, time.Hour)
+	if err != nil {
+		t.Fatalf("create invitation: %v", err)
+	}
+	if _, err := store.AcceptInvitation(ctx, rawWrong, inviteeID, "attacker@example.com"); err != account.ErrInvitationWrongEmail {
+		t.Fatalf("wrong-email accept = %v, want ErrInvitationWrongEmail", err)
 	}
 
 	// Expired invitations are rejected.

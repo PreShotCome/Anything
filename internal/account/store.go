@@ -88,9 +88,12 @@ type Invitation struct {
 }
 
 var (
-	ErrNotFound        = errors.New("account: not found")
-	ErrInvitationGone  = errors.New("account: invitation expired or already accepted")
-	ErrSlugUnavailable = errors.New("account: slug unavailable")
+	ErrNotFound       = errors.New("account: not found")
+	ErrInvitationGone = errors.New("account: invitation expired or already accepted")
+	// ErrInvitationWrongEmail is returned when the accepting user's email
+	// does not match the address the invitation was issued to.
+	ErrInvitationWrongEmail = errors.New("account: invitation was issued to a different email")
+	ErrSlugUnavailable      = errors.New("account: slug unavailable")
 )
 
 type Store struct{ pool *pgxpool.Pool }
@@ -232,38 +235,61 @@ func (s *Store) ListMembers(ctx context.Context, accountID uuid.UUID) ([]Members
 	return out, rows.Err()
 }
 
+// lockMembers locks every membership row of an account FOR UPDATE and returns
+// the owner count plus the target user's role. Holding the lock serialises
+// concurrent role changes, so the last-owner check below cannot be raced into
+// leaving an account with zero owners.
+func lockMembers(ctx context.Context, tx pgx.Tx, accountID, userID uuid.UUID) (ownerCount int, targetRole Role, found bool, err error) {
+	rows, err := tx.Query(ctx, `
+		SELECT user_id, role FROM memberships WHERE account_id = $1 FOR UPDATE
+	`, accountID)
+	if err != nil {
+		return 0, "", false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var uid uuid.UUID
+		var role Role
+		if err := rows.Scan(&uid, &role); err != nil {
+			return 0, "", false, err
+		}
+		if role == RoleOwner {
+			ownerCount++
+		}
+		if uid == userID {
+			targetRole, found = role, true
+		}
+	}
+	return ownerCount, targetRole, found, rows.Err()
+}
+
 func (s *Store) UpdateMemberRole(ctx context.Context, accountID, userID uuid.UUID, role Role) error {
 	if !role.Valid() {
 		return errors.New("invalid role")
 	}
-	// Forbid demoting the last owner — would leave the account ownerless.
-	if role != RoleOwner {
-		var ownerCount int
-		if err := s.pool.QueryRow(ctx, `
-			SELECT count(*) FROM memberships WHERE account_id = $1 AND role = 'owner'
-		`, accountID).Scan(&ownerCount); err != nil {
-			return err
-		}
-		var currentRole Role
-		if err := s.pool.QueryRow(ctx, `
-			SELECT role FROM memberships WHERE account_id = $1 AND user_id = $2
-		`, accountID, userID).Scan(&currentRole); err != nil {
-			return err
-		}
-		if currentRole == RoleOwner && ownerCount <= 1 {
-			return errors.New("cannot demote the only owner")
-		}
-	}
-	tag, err := s.pool.Exec(ctx, `
-		UPDATE memberships SET role = $3 WHERE account_id = $1 AND user_id = $2
-	`, accountID, userID, role)
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	ownerCount, currentRole, found, err := lockMembers(ctx, tx, accountID, userID)
+	if err != nil {
+		return err
+	}
+	if !found {
 		return ErrNotFound
 	}
-	return nil
+	// Forbid demoting the last owner — would leave the account ownerless.
+	if role != RoleOwner && currentRole == RoleOwner && ownerCount <= 1 {
+		return errors.New("cannot demote the only owner")
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE memberships SET role = $3 WHERE account_id = $1 AND user_id = $2
+	`, accountID, userID, role); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // TransferOwnership hands the owner role from the current owner to another
@@ -317,29 +343,28 @@ func (s *Store) TransferOwnership(ctx context.Context, accountID, fromUserID, to
 }
 
 func (s *Store) RemoveMember(ctx context.Context, accountID, userID uuid.UUID) error {
-	// Mirror the owner protection above.
-	var ownerCount int
-	if err := s.pool.QueryRow(ctx, `
-		SELECT count(*) FROM memberships WHERE account_id = $1 AND role = 'owner'
-	`, accountID).Scan(&ownerCount); err != nil {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
 		return err
 	}
-	var role Role
-	if err := s.pool.QueryRow(ctx, `
-		SELECT role FROM memberships WHERE account_id = $1 AND user_id = $2
-	`, accountID, userID).Scan(&role); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNotFound
-		}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	ownerCount, role, found, err := lockMembers(ctx, tx, accountID, userID)
+	if err != nil {
 		return err
+	}
+	if !found {
+		return ErrNotFound
 	}
 	if role == RoleOwner && ownerCount <= 1 {
 		return errors.New("cannot remove the only owner")
 	}
-	_, err := s.pool.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		DELETE FROM memberships WHERE account_id = $1 AND user_id = $2
-	`, accountID, userID)
-	return err
+	`, accountID, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // --- invitations ---
@@ -397,8 +422,9 @@ func (s *Store) LookupInvitation(ctx context.Context, rawToken string) (Invitati
 
 // AcceptInvitation marks the invitation accepted and creates the membership
 // in one transaction. Idempotent: a second accept by the same user is a
-// no-op.
-func (s *Store) AcceptInvitation(ctx context.Context, rawToken string, userID uuid.UUID) (Invitation, error) {
+// no-op. userEmail must match the address the invitation was sent to —
+// otherwise anyone holding the link could join the account.
+func (s *Store) AcceptInvitation(ctx context.Context, rawToken string, userID uuid.UUID, userEmail string) (Invitation, error) {
 	hash := hashToken(rawToken)
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -423,6 +449,9 @@ func (s *Store) AcceptInvitation(ctx context.Context, rawToken string, userID uu
 	}
 	if time.Now().UTC().After(inv.ExpiresAt) {
 		return inv, ErrInvitationGone
+	}
+	if !strings.EqualFold(strings.TrimSpace(userEmail), inv.Email) {
+		return inv, ErrInvitationWrongEmail
 	}
 
 	if _, err := tx.Exec(ctx, `

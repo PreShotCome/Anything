@@ -83,6 +83,29 @@ not started, planned · `debt` = works but should be revisited.
 
 ## Resolved
 
+Bug-report remediation pass (correctness + security audit):
+
+- Drill pipeline: transient store/lookup errors now retry via River instead
+  of permanently failing a drill; the `Runner` interface gained `Rehydrate`
+  so non-local runners work; `Restore` sniffs the dump's magic header rather
+  than trusting the file extension; `MarkStepSucceeded` can't resurrect a
+  skipped step; the evidence path is recorded before the report step is
+  marked done.
+- `/v1` idempotency no longer caches 5xx responses (a transient failure is
+  retryable, not replayed forever).
+- TOTP codes are single-use (replay-protected via a stored counter); the
+  session token is rotated when MFA completes.
+- Last-owner demotion/removal is transactional + row-locked (no ownerless
+  account race); invitations can only be accepted by the invited email;
+  API keys on a soft-deleted account stop authenticating.
+- `accountSwitch` redirect target goes through `safeNext` (no open
+  redirect); a global request-body cap blocks oversized-POST DoS.
+- Retention sweep continues past a failing step; the GDPR export is
+  buffered so a mid-stream failure returns a clean 500; evidence PDF tables
+  wrap text and paginate.
+- Webhook fan-out is idempotent (per-event delivery dedup + by-args job
+  uniqueness); the rate limiter guards against a zero rate.
+
 Layer-5 identity:
 
 - **Magic-link login** — passwordless sign-in: `/login/magic` emails a

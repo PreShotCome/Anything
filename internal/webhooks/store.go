@@ -149,15 +149,26 @@ func (s *Store) DeleteEndpoint(ctx context.Context, accountID, endpointID uuid.U
 
 // --- deliveries ---
 
-// CreateDelivery records a pending delivery row. The caller enqueues the
-// River job separately, keyed on the returned ID.
-func (s *Store) CreateDelivery(ctx context.Context, endpointID, accountID uuid.UUID, event string, payload []byte) (uuid.UUID, error) {
+// CreateDelivery records a pending delivery row and returns its ID. The
+// caller enqueues the River job separately, keyed on that ID.
+//
+// eventKey makes the call idempotent: a second CreateDelivery for the same
+// (endpoint, eventKey) returns the existing row instead of inserting a
+// duplicate — so a retried fan-out does not double-deliver. An empty eventKey
+// disables dedup (every call inserts a fresh row).
+func (s *Store) CreateDelivery(ctx context.Context, endpointID, accountID uuid.UUID, event, eventKey string, payload []byte) (uuid.UUID, error) {
+	var key any
+	if eventKey != "" {
+		key = eventKey
+	}
 	var id uuid.UUID
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO webhook_deliveries (endpoint_id, account_id, event, payload)
-		VALUES ($1, $2, $3, $4::jsonb)
+		INSERT INTO webhook_deliveries (endpoint_id, account_id, event, event_key, payload)
+		VALUES ($1, $2, $3, $4, $5::jsonb)
+		ON CONFLICT (endpoint_id, event_key) WHERE event_key IS NOT NULL
+		    DO UPDATE SET event_key = EXCLUDED.event_key
 		RETURNING id
-	`, endpointID, accountID, event, string(payload)).Scan(&id)
+	`, endpointID, accountID, event, key, string(payload)).Scan(&id)
 	return id, err
 }
 

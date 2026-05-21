@@ -201,12 +201,17 @@ func (h *Handlers) v1Idempotency(next http.Handler) http.Handler {
 		rec := &captureWriter{ResponseWriter: w, status: http.StatusOK, buf: &bytes.Buffer{}}
 		next.ServeHTTP(rec, r)
 
-		_, _ = h.pool.Exec(r.Context(), `
-			INSERT INTO api_idempotency
-			    (account_id, idempotency_key, request_fingerprint, status_code, response_body)
-			VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (account_id, idempotency_key) DO NOTHING
-		`, acct.ID, key, fingerprint, rec.status, rec.buf.Bytes())
+		// Only 2xx/4xx are recorded for replay. A 5xx is a transient server
+		// error: caching it would replay the failure forever even after the
+		// underlying write succeeded — so leave it un-recorded and retryable.
+		if rec.status < 500 {
+			_, _ = h.pool.Exec(r.Context(), `
+				INSERT INTO api_idempotency
+				    (account_id, idempotency_key, request_fingerprint, status_code, response_body)
+				VALUES ($1, $2, $3, $4, $5)
+				ON CONFLICT (account_id, idempotency_key) DO NOTHING
+			`, acct.ID, key, fingerprint, rec.status, rec.buf.Bytes())
+		}
 	})
 }
 

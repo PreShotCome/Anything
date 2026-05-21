@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"net/http"
 
 	"github.com/riverqueue/river"
@@ -11,9 +12,18 @@ import (
 	"github.com/preshotcome/anything/internal/web/templates"
 )
 
-// accountExport streams the GDPR/CCPA data export as a JSON download.
+// accountExport returns the GDPR/CCPA data export as a JSON download. The
+// export is built fully into memory first: if it fails we can still return a
+// clean 500, rather than flushing a 200 and then a truncated body.
 func (h *Handlers) accountExport(w http.ResponseWriter, r *http.Request) {
 	lc := h.layoutCtx(r)
+
+	var buf bytes.Buffer
+	if err := h.exporter.Export(r.Context(), lc.Account.ID, &buf); err != nil {
+		h.logger().Error("account export failed", "account_id", lc.Account.ID, "err", err)
+		http.Error(w, "could not generate export", http.StatusInternalServerError)
+		return
+	}
 
 	_ = h.audit.Record(r.Context(), audit.Event{
 		AccountID: &lc.Account.ID, ActorID: &lc.User.ID, Action: "account.exported",
@@ -24,10 +34,7 @@ func (h *Handlers) accountExport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition",
 		`attachment; filename="restore-drill-export-`+lc.Account.Slug+`.json"`)
-	if err := h.exporter.Export(r.Context(), lc.Account.ID, w); err != nil {
-		// Headers may already be flushed; best-effort error.
-		h.logger().Error("account export failed", "account_id", lc.Account.ID, "err", err)
-	}
+	_, _ = w.Write(buf.Bytes())
 }
 
 // accountDelete soft-deletes the account and schedules the hard-delete job.

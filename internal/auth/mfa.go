@@ -43,17 +43,45 @@ func (s *Store) DisableMFA(ctx context.Context, userID uuid.UUID) error {
 	return tx.Commit(ctx)
 }
 
-// TOTPSecret returns a user's stored TOTP secret; empty when MFA is off.
-func (s *Store) TOTPSecret(ctx context.Context, userID uuid.UUID) (string, error) {
-	var secret *string
-	if err := s.pool.QueryRow(ctx,
-		`SELECT totp_secret FROM users WHERE id = $1`, userID).Scan(&secret); err != nil {
-		return "", err
+// VerifyAndConsumeTOTP verifies a login TOTP code and records its time-step
+// counter so the same code cannot be replayed within its ~90s validity
+// window. The check and the counter write are one locked transaction, so two
+// concurrent submissions of the same code cannot both succeed.
+func (s *Store) VerifyAndConsumeTOTP(ctx context.Context, userID uuid.UUID, code string) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var (
+		secret *string
+		last   *int64
+	)
+	err = tx.QueryRow(ctx, `
+		SELECT totp_secret, totp_last_used_counter FROM users WHERE id = $1 FOR UPDATE
+	`, userID).Scan(&secret, &last)
+	if err != nil {
+		return false, err
 	}
 	if secret == nil {
-		return "", nil
+		return false, nil
 	}
-	return *secret, nil
+	counter, ok := VerifyTOTPWithCounter(*secret, code, time.Now())
+	if !ok {
+		return false, nil
+	}
+	if last != nil && counter <= *last {
+		return false, nil // replay of an already-used (or older) code
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE users SET totp_last_used_counter = $2 WHERE id = $1`, userID, counter); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // GenerateRecoveryCodes returns a fresh batch of human-friendly recovery
@@ -139,22 +167,35 @@ func (s *Store) PendingMFAUser(ctx context.Context, r *http.Request) (*User, err
 	return s.loadUser(ctx, userID)
 }
 
-// CompleteMFA clears the mfa_pending flag, promoting the session to a fully
-// authenticated one.
-func (s *Store) CompleteMFA(ctx context.Context, r *http.Request) error {
+// CompleteMFA finishes the second login step: it destroys the pending
+// session and issues a fresh, fully authenticated one with a new token. The
+// session is rotated at the auth boundary, so a cookie observed during the
+// pending window does not carry over into the authenticated session.
+func (s *Store) CompleteMFA(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 	c, err := r.Cookie(s.cookieName())
 	if err != nil {
 		return ErrNoSession
 	}
-	tag, err := s.pool.Exec(ctx, `
-		UPDATE sessions SET mfa_pending = FALSE
-		 WHERE token_hash = $1 AND mfa_pending = TRUE
-	`, hashToken(c.Value))
+	hash := hashToken(c.Value)
+
+	var (
+		userID  uuid.UUID
+		pending bool
+	)
+	err = s.pool.QueryRow(ctx, `
+		SELECT user_id, mfa_pending FROM sessions WHERE token_hash = $1
+	`, hash).Scan(&userID, &pending)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNoSession
+	}
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
+	if !pending {
 		return ErrNoSession
 	}
-	return nil
+	if _, err := s.pool.Exec(ctx, `DELETE FROM sessions WHERE token_hash = $1`, hash); err != nil {
+		return err
+	}
+	return s.create(ctx, w, userID, uuid.Nil, false)
 }

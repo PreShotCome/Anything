@@ -192,6 +192,7 @@ func main() {
 		MetricsToken:         cfg.MetricsToken,
 		APIKeys:              apikey.NewStore(pool),
 		V1Limiter:            v1Limiter,
+		SourceDir:            cfg.SourceDir,
 	})
 
 	// Sample River queue depth into the metrics gauge every 15s.

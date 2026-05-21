@@ -85,7 +85,11 @@ func (p *Protector) Middleware(next http.Handler) http.Handler {
 		if isUnsafe(r.Method) && !p.isExempt(r.URL.Path) {
 			submitted := r.PostFormValue(FieldName)
 			if submitted == "" || subtle.ConstantTimeCompare([]byte(submitted), []byte(token)) != 1 {
-				http.Error(w, "CSRF token invalid or missing", http.StatusForbidden)
+				// A missing/stale token most often means the cookie expired or
+				// was cleared — a fresh one was just set above, so a reload of
+				// the form recovers. Say so rather than a bare "invalid".
+				http.Error(w, "Your session token is missing or expired — reload the page and try again.",
+					http.StatusForbidden)
 				return
 			}
 		}

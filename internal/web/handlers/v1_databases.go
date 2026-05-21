@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -154,9 +153,9 @@ func (h *Handlers) v1CreateDatabase(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, err := os.Stat(req.SourceURI); err != nil {
-		writeAPIError(w, http.StatusBadRequest, "validation",
-			"source_uri not found on the server: "+req.SourceURI)
+	cleanPath, err := h.resolveSourcePath(req.SourceURI)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "validation", err.Error())
 		return
 	}
 
@@ -165,7 +164,7 @@ func (h *Handlers) v1CreateDatabase(w http.ResponseWriter, r *http.Request) {
 		CreatedByUserID: key.CreatedByUserID,
 		Name:            req.Name,
 		SourceKind:      "postgres_dump_local",
-		SourceURI:       req.SourceURI,
+		SourceURI:       cleanPath,
 	})
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal", "could not create database")
@@ -184,12 +183,13 @@ func (h *Handlers) v1CreateDatabase(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusCreated, toAPIDatabase(t, stored), nil)
 }
 
-// decodeJSONBody strictly decodes a JSON request body.
+// decodeJSONBody strictly decodes a JSON request body. Decoder errors are not
+// echoed back — they can carry Go type/struct detail — only a generic message.
 func decodeJSONBody(r *http.Request, dst any) error {
 	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		return errors.New("invalid JSON body: " + err.Error())
+		return errors.New("request body is not valid JSON, or contains unexpected fields")
 	}
 	return nil
 }

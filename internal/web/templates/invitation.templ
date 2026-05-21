@@ -44,3 +44,16 @@ templ InvitationGone() {
 		</div>
 	}
 }
+
+templ InvitationWrongEmail() {
+	@Layout("Wrong account", nil) {
+		<div class="card mx-auto max-w-md space-y-2 text-center">
+			<h1 class="text-xl font-semibold">This invitation isn't for you</h1>
+			<p class="text-sm text-zinc-600 dark:text-zinc-400">
+				It was sent to a different email address. Sign in with the
+				invited address, or ask an account admin to re-send it to yours.
+			</p>
+			<a href="/" class="btn-ghost mt-2 inline-block">Go home</a>
+		</div>
+	}
+}

@@ -111,7 +111,7 @@ func (h *Handlers) invitationAccept(w http.ResponseWriter, r *http.Request) {
 	}
 	token := chi.URLParam(r, "token")
 
-	inv, err := h.accounts.AcceptInvitation(r.Context(), token, u.ID)
+	inv, err := h.accounts.AcceptInvitation(r.Context(), token, u.ID, u.Email)
 	if err != nil {
 		if errors.Is(err, account.ErrNotFound) {
 			http.NotFound(w, r)
@@ -119,6 +119,11 @@ func (h *Handlers) invitationAccept(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, account.ErrInvitationGone) {
 			render(w, r, templates.InvitationGone())
+			return
+		}
+		if errors.Is(err, account.ErrInvitationWrongEmail) {
+			w.WriteHeader(http.StatusForbidden)
+			render(w, r, templates.InvitationWrongEmail())
 			return
 		}
 		http.Error(w, "accept: "+err.Error(), http.StatusInternalServerError)
@@ -244,11 +249,9 @@ func (h *Handlers) accountSwitch(w http.ResponseWriter, r *http.Request) {
 		AccountID: &target, ActorID: &u.ID, Action: "account.switched",
 		TargetKind: "account", TargetID: target.String(),
 	})
-	next := r.PostFormValue("next")
-	if next == "" || !strings.HasPrefix(next, "/") {
-		next = "/dashboard"
-	}
-	http.Redirect(w, r, next, http.StatusSeeOther)
+	// safeNext also rejects protocol-relative "//evil.com" targets, which a
+	// bare HasPrefix("/") check would let through as an open redirect.
+	http.Redirect(w, r, redirectTarget(safeNext(r.PostFormValue("next"))), http.StatusSeeOther)
 }
 
 func absoluteURL(r *http.Request, path string) string {

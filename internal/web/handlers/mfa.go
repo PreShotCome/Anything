@@ -109,14 +109,14 @@ func (h *Handlers) mfaChallengeSubmit(w http.ResponseWriter, r *http.Request) {
 	code := strings.TrimSpace(r.PostFormValue("code"))
 	next := safeNext(r.PostFormValue("next"))
 
-	secret, err := h.sessions.TOTPSecret(r.Context(), u.ID)
+	// VerifyAndConsumeTOTP rejects a replayed code; fall back to a single-use
+	// recovery code if the TOTP doesn't match.
+	ok, err := h.sessions.VerifyAndConsumeTOTP(r.Context(), u.ID, code)
 	if err != nil {
 		http.Error(w, "mfa lookup failed", http.StatusInternalServerError)
 		return
 	}
-	ok := auth.VerifyTOTP(secret, code, time.Now())
 	if !ok {
-		// Fall back to a single-use recovery code.
 		ok, err = h.sessions.ConsumeRecoveryCode(r.Context(), u.ID, code)
 		if err != nil {
 			http.Error(w, "mfa lookup failed", http.StatusInternalServerError)
@@ -129,7 +129,7 @@ func (h *Handlers) mfaChallengeSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.sessions.CompleteMFA(r.Context(), r); err != nil {
+	if err := h.sessions.CompleteMFA(r.Context(), w, r); err != nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}

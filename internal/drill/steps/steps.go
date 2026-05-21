@@ -95,23 +95,20 @@ func (d Deps) sandbox(ctx context.Context, drillID uuid.UUID) (*runner.Sandbox, 
 	if dr.SandboxDB == nil || *dr.SandboxDB == "" {
 		return nil, errors.New("sandbox db not recorded")
 	}
-	// We don't persist the full sandbox DSN; reconstruct it from the runner
-	// when needed. The mock runner can rebuild it; the field on the drill is
-	// the bare DB name for human-readable logging.
-	//
-	// In Phase 2 the LocalRunner is the only real runner; we ask it to build
-	// the DSN. To keep this code runner-agnostic, the runner.Runner contract
-	// doesn't expose a "rehydrate sandbox" — instead each worker passes the
-	// sandbox object forward via the next step's args... but that's a lot of
-	// args. Compromise: the LocalRunner has a public RehydrateSandbox method.
-	if lr, ok := d.Runner.(*runner.LocalRunner); ok {
-		return lr.Rehydrate(drillID, *dr.SandboxDB)
-	}
-	return nil, errors.New("runner does not support rehydration")
+	// The full sandbox DSN isn't persisted — only the bare DB name. Ask the
+	// runner to rebuild the handle from it; Rehydrate is part of the Runner
+	// contract, so this stays runner-agnostic.
+	return d.Runner.Rehydrate(drillID, *dr.SandboxDB)
 }
 
-// failAndCleanup is called by any step that errors. It marks the step failed
-// and enqueues teardown with the failure reason so the sandbox is cleaned up.
+// failAndCleanup terminates a drill on a *genuine* step failure: it marks the
+// step failed and enqueues teardown so the sandbox is cleaned up.
+//
+// It is only for failures of the step's real work (Provision/Fetch/Restore,
+// assertion queries, report rendering). Transient infrastructure errors —
+// store reads/writes, sandbox rehydration — are instead returned raw from the
+// worker so River retries them, rather than flipping a drill permanently
+// failed on a momentary database blip.
 func (d Deps) failAndCleanup(ctx context.Context, drillID uuid.UUID, step drill.StepName, reason string) error {
 	_ = d.Store.MarkStepFailed(ctx, drillID, step, reason)
 	for _, later := range stepsAfter(step) {
@@ -181,7 +178,7 @@ func (w *ProvisionWorker) Work(ctx context.Context, job *river.Job[drill.Provisi
 		return w.D.failAndCleanup(ctx, drillID, drill.StepProvision, err.Error())
 	}
 	if err := w.D.Store.SetSandboxDB(ctx, drillID, sb.Name); err != nil {
-		return w.D.failAndCleanup(ctx, drillID, drill.StepProvision, err.Error())
+		return err // transient store write — let River retry (Provision is idempotent)
 	}
 	if err := w.D.Store.MarkStepSucceeded(ctx, drillID, drill.StepProvision); err != nil {
 		return err
@@ -222,12 +219,12 @@ func (w *FetchWorker) Work(ctx context.Context, job *river.Job[drill.FetchArgs])
 
 	dr, target, err := w.D.lookupDrillAndTarget(ctx, drillID)
 	if err != nil {
-		return w.D.failAndCleanup(ctx, drillID, drill.StepFetch, err.Error())
+		return err // transient store read — let River retry
 	}
 
 	sb, err := w.D.sandbox(ctx, drillID)
 	if err != nil {
-		return w.D.failAndCleanup(ctx, drillID, drill.StepFetch, err.Error())
+		return err // transient store read — let River retry
 	}
 
 	localPath, err := w.D.Runner.Fetch(ctx, sb, target.SourceURI)
@@ -290,7 +287,7 @@ func (w *RestoreWorker) Work(ctx context.Context, job *river.Job[drill.RestoreAr
 
 	sb, err := w.D.sandbox(ctx, drillID)
 	if err != nil {
-		return w.D.failAndCleanup(ctx, drillID, drill.StepRestore, err.Error())
+		return err // transient store read — let River retry
 	}
 	if err := w.D.Runner.Restore(ctx, sb, job.Args.FilePath); err != nil {
 		return w.D.failAndCleanup(ctx, drillID, drill.StepRestore, err.Error())
@@ -331,15 +328,15 @@ func (w *AssertWorker) Work(ctx context.Context, job *river.Job[drill.AssertArgs
 
 	_, target, err := w.D.lookupDrillAndTarget(ctx, drillID)
 	if err != nil {
-		return w.D.failAndCleanup(ctx, drillID, drill.StepAssert, err.Error())
+		return err // transient store read — let River retry
 	}
 	specs, err := w.D.Store.ListTargetAssertions(ctx, target.ID)
 	if err != nil {
-		return w.D.failAndCleanup(ctx, drillID, drill.StepAssert, err.Error())
+		return err // transient store read — let River retry
 	}
 	sb, err := w.D.sandbox(ctx, drillID)
 	if err != nil {
-		return w.D.failAndCleanup(ctx, drillID, drill.StepAssert, err.Error())
+		return err // transient store read — let River retry
 	}
 
 	if err := w.runAssertions(ctx, drillID, sb, specs); err != nil {
@@ -426,15 +423,15 @@ func (w *ReportWorker) Work(ctx context.Context, job *river.Job[drill.ReportArgs
 
 	dr, target, err := w.D.lookupDrillAndTarget(ctx, drillID)
 	if err != nil {
-		return w.D.failAndCleanup(ctx, drillID, drill.StepReport, err.Error())
+		return err // transient store read — let River retry
 	}
 	steps, err := w.D.Store.ListSteps(ctx, drillID)
 	if err != nil {
-		return w.D.failAndCleanup(ctx, drillID, drill.StepReport, err.Error())
+		return err // transient store read — let River retry
 	}
 	ars, err := w.D.Store.ListAssertions(ctx, drillID)
 	if err != nil {
-		return w.D.failAndCleanup(ctx, drillID, drill.StepReport, err.Error())
+		return err // transient store read — let River retry
 	}
 
 	// Determine verdict from assertions: any failed assertion → drill failed.
@@ -467,6 +464,12 @@ func (w *ReportWorker) Work(ctx context.Context, job *river.Job[drill.ReportArgs
 		return w.D.failAndCleanup(ctx, drillID, drill.StepReport, err.Error())
 	}
 
+	// Record the evidence path *before* marking the step succeeded. If this
+	// write fails the step stays unfinished and River retries, so teardown
+	// can never mark a drill succeeded with an empty evidence_path.
+	if err := w.D.Store.MarkEvidence(ctx, drillID, path); err != nil {
+		return err
+	}
 	if err := w.D.Store.MarkStepSucceeded(ctx, drillID, drill.StepReport); err != nil {
 		return err
 	}
@@ -474,8 +477,6 @@ func (w *ReportWorker) Work(ctx context.Context, job *river.Job[drill.ReportArgs
 	if !verdictPass {
 		// Mark the drill failed now; teardown still runs to clean up.
 		_ = w.D.Store.MarkDrillFailed(ctx, drillID, "one or more assertions failed")
-		// Record the evidence path so the user can download the failure PDF.
-		_ = w.D.Store.MarkEvidence(ctx, drillID, path)
 		acct := dr.AccountID
 		_ = w.D.Audit.Record(ctx, audit.Event{
 			AccountID: &acct,
@@ -489,9 +490,6 @@ func (w *ReportWorker) Work(ctx context.Context, job *river.Job[drill.ReportArgs
 		return err
 	}
 
-	// Pass path: stash evidence path now so the user can download the moment
-	// the next worker hops.
-	_ = w.D.Store.MarkEvidence(ctx, drillID, path)
 	_, err = w.D.Inserter.Insert(ctx, drill.TeardownArgs{DrillID: drillID}, drill.TraceOpts(ctx))
 	return err
 }
