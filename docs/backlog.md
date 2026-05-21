@@ -41,8 +41,6 @@ not started, planned · `debt` = works but should be revisited.
 - **Crypto-shred** — `debt`. Evidence is not encrypted at rest, so
   "crypto-shred" on account deletion is plain file deletion. True
   crypto-shred needs at-rest encryption with a per-account key.
-- **Signing-key rotation** — `debt`. Evidence signed with an old key fails
-  verification after rotation; there is no multi-key verification set.
 - **Legal copy** — `deferred`. ToS/Privacy/DPA pages are DRAFT placeholders
   pending counsel.
 
@@ -83,6 +81,14 @@ not started, planned · `debt` = works but should be revisited.
   wants expand-then-contract verified on a prod-sized clone.
 
 ## Resolved
+
+Layer-5 evidence:
+
+- **Signing-key rotation** — the evidence signer now keeps a verification
+  key *set*: it signs with one active key but verifies against the active
+  key plus any retired keys supplied via `EVIDENCE_VERIFICATION_KEYS`
+  (concatenated PEM public keys). `Verify` resolves the verifying key by
+  fingerprint, so evidence signed before a rotation still verifies.
 
 Layer-9 growth:
 

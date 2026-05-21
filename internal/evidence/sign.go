@@ -28,40 +28,92 @@ type Signature struct {
 	SignedAt    time.Time
 }
 
-// Signer produces detached signatures. It is safe for concurrent use.
+// Signer produces detached signatures and verifies them. It signs with one
+// active key but can verify against a set: the active key plus any retired
+// keys, so evidence signed before a key rotation still verifies. Safe for
+// concurrent use (verifyKeys is read-only after construction).
 type Signer struct {
 	priv        ed25519.PrivateKey
 	publicKeyID string
 	ephemeral   bool
+	// verifyKeys maps a public-key fingerprint to its key. Always contains
+	// the active key; retired keys are added from EVIDENCE_VERIFICATION_KEYS.
+	verifyKeys map[string]ed25519.PublicKey
 }
 
-// NewSigner builds a Signer. keyPEM is a PKCS#8 Ed25519 private key in PEM
-// form (the EVIDENCE_SIGNING_KEY config value). When keyPEM is empty an
-// ephemeral key is generated — fine for dev/CI, never for production
-// evidence that must verify across restarts.
+// NewSigner builds a Signer with only its active key. Equivalent to
+// NewSignerWithVerificationKeys(keyPEM, "").
 func NewSigner(keyPEM string) (*Signer, error) {
+	return NewSignerWithVerificationKeys(keyPEM, "")
+}
+
+// NewSignerWithVerificationKeys builds a Signer. keyPEM is a PKCS#8 Ed25519
+// private key in PEM form (the EVIDENCE_SIGNING_KEY config value); when empty
+// an ephemeral key is generated — fine for dev/CI, never for production.
+//
+// verifyKeysPEM is zero or more concatenated PEM public-key blocks (the
+// EVIDENCE_VERIFICATION_KEYS config value): the public halves of keys retired
+// by rotation. Their signatures still verify even though they no longer sign.
+func NewSignerWithVerificationKeys(keyPEM, verifyKeysPEM string) (*Signer, error) {
+	var (
+		priv      ed25519.PrivateKey
+		ephemeral bool
+	)
 	if keyPEM == "" {
-		pub, priv, err := ed25519.GenerateKey(nil)
+		_, generated, err := ed25519.GenerateKey(nil)
 		if err != nil {
 			return nil, fmt.Errorf("generate ephemeral key: %w", err)
 		}
-		return &Signer{priv: priv, publicKeyID: keyID(pub), ephemeral: true}, nil
+		priv, ephemeral = generated, true
+	} else {
+		block, _ := pem.Decode([]byte(keyPEM))
+		if block == nil {
+			return nil, errors.New("evidence: EVIDENCE_SIGNING_KEY is not valid PEM")
+		}
+		parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("parse signing key: %w", err)
+		}
+		var ok bool
+		priv, ok = parsed.(ed25519.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("evidence: signing key is %T, want ed25519", parsed)
+		}
 	}
 
-	block, _ := pem.Decode([]byte(keyPEM))
-	if block == nil {
-		return nil, errors.New("evidence: EVIDENCE_SIGNING_KEY is not valid PEM")
-	}
-	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("parse signing key: %w", err)
-	}
-	priv, ok := parsed.(ed25519.PrivateKey)
-	if !ok {
-		return nil, fmt.Errorf("evidence: signing key is %T, want ed25519", parsed)
-	}
 	pub := priv.Public().(ed25519.PublicKey)
-	return &Signer{priv: priv, publicKeyID: keyID(pub)}, nil
+	s := &Signer{
+		priv:        priv,
+		publicKeyID: keyID(pub),
+		ephemeral:   ephemeral,
+		verifyKeys:  map[string]ed25519.PublicKey{keyID(pub): pub},
+	}
+
+	rest := []byte(verifyKeysPEM)
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("evidence: EVIDENCE_VERIFICATION_KEYS: %w", err)
+		}
+		retired, ok := parsed.(ed25519.PublicKey)
+		if !ok {
+			return nil, fmt.Errorf("evidence: verification key is %T, want ed25519", parsed)
+		}
+		s.verifyKeys[keyID(retired)] = retired
+	}
+	return s, nil
+}
+
+// VerificationKey returns the public key registered under keyID — the active
+// key or a retired verification key — and whether one was found.
+func (s *Signer) VerificationKey(keyID string) (ed25519.PublicKey, bool) {
+	pub, ok := s.verifyKeys[keyID]
+	return pub, ok
 }
 
 // Ephemeral reports whether the signer is using a generated (non-persistent)

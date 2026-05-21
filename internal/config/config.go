@@ -19,7 +19,10 @@ type Config struct {
 	EvidenceDir        string
 	StripeSecretKey    string
 	EvidenceSigningKey string
-	SentryDSN          string
+	// EvidenceVerificationKeys holds zero or more concatenated PEM public-key
+	// blocks — keys retired by rotation, kept so old evidence still verifies.
+	EvidenceVerificationKeys string
+	SentryDSN                string
 
 	PostmarkToken        string
 	PostmarkWebhookToken string
@@ -33,15 +36,16 @@ type Config struct {
 
 func Load() (Config, error) {
 	c := Config{
-		Addr:               getenv("ADDR", ":8080"),
-		DatabaseURL:        os.Getenv("DATABASE_URL"),
-		Environment:        getenv("ENV", "dev"),
-		IdleTimeout:        14 * 24 * time.Hour,
-		AbsoluteMaxAge:     30 * 24 * time.Hour,
-		EvidenceDir:        getenv("EVIDENCE_DIR", "tmp/evidence"),
-		StripeSecretKey:    os.Getenv("STRIPE_SECRET_KEY"),
-		EvidenceSigningKey: os.Getenv("EVIDENCE_SIGNING_KEY"),
-		SentryDSN:          os.Getenv("SENTRY_DSN"),
+		Addr:                     getenv("ADDR", ":8080"),
+		DatabaseURL:              os.Getenv("DATABASE_URL"),
+		Environment:              getenv("ENV", "dev"),
+		IdleTimeout:              14 * 24 * time.Hour,
+		AbsoluteMaxAge:           30 * 24 * time.Hour,
+		EvidenceDir:              getenv("EVIDENCE_DIR", "tmp/evidence"),
+		StripeSecretKey:          os.Getenv("STRIPE_SECRET_KEY"),
+		EvidenceSigningKey:       os.Getenv("EVIDENCE_SIGNING_KEY"),
+		EvidenceVerificationKeys: os.Getenv("EVIDENCE_VERIFICATION_KEYS"),
+		SentryDSN:                os.Getenv("SENTRY_DSN"),
 
 		PostmarkToken:        os.Getenv("POSTMARK_TOKEN"),
 		PostmarkWebhookToken: os.Getenv("POSTMARK_WEBHOOK_TOKEN"),

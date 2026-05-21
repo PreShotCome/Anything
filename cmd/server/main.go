@@ -104,7 +104,7 @@ func main() {
 	featureFlags := flags.New()
 
 	// Evidence: detached-signature signer + local store.
-	signer, err := evidence.NewSigner(cfg.EvidenceSigningKey)
+	signer, err := evidence.NewSignerWithVerificationKeys(cfg.EvidenceSigningKey, cfg.EvidenceVerificationKeys)
 	if err != nil {
 		logger.Error("evidence signer", "err", err)
 		os.Exit(1)
