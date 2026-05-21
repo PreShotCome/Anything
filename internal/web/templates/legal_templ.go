@@ -135,7 +135,7 @@ func LegalPrivacy() templ.Component {
 	})
 }
 
-func LegalDPA() templ.Component {
+func LegalSubprocessors() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -156,7 +156,65 @@ func LegalDPA() templ.Component {
 			templ_7745c5c3_Var6 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div class=\"space-y-3 text-sm text-zinc-700 dark:text-zinc-300\"><p>This Data Processing Addendum describes how Restore Drill processes personal data on your behalf as a processor.</p><h2 class=\"text-base font-semibold\">Scope</h2><p>Restore Drill processes the data contained in the database dumps you register only to perform the verification you request. We do not access that data for any other purpose.</p><h2 class=\"text-base font-semibold\">Sub-processors</h2><p>A current sub-processor list will be published here before general availability. Material changes will be notified in advance.</p><h2 class=\"text-base font-semibold\">Security</h2><p>Drills run in isolated, ephemeral sandboxes. Evidence is signed and retained under access control. See the Privacy Policy for retention detail.</p></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div class=\"space-y-3 text-sm text-zinc-700 dark:text-zinc-300\"><p>Restore Drill uses the third-party services below to process data on your behalf. We notify customers in advance of material changes to this list.</p><div class=\"card overflow-x-auto p-0\"><table class=\"min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800\"><thead class=\"bg-zinc-50 dark:bg-zinc-900/50\"><tr><th class=\"px-4 py-2 text-left font-medium\">Sub-processor</th><th class=\"px-4 py-2 text-left font-medium\">Purpose</th><th class=\"px-4 py-2 text-left font-medium\">Data</th></tr></thead> <tbody class=\"divide-y divide-zinc-200 dark:divide-zinc-800\"><tr><td class=\"px-4 py-2 font-medium\">Managed Postgres host</td><td class=\"px-4 py-2\">Primary application database</td><td class=\"px-4 py-2\">Account, user, drill, and audit records</td></tr><tr><td class=\"px-4 py-2 font-medium\">Object storage</td><td class=\"px-4 py-2\">Evidence retention</td><td class=\"px-4 py-2\">Signed drill report PDFs</td></tr><tr><td class=\"px-4 py-2 font-medium\">Sandbox compute</td><td class=\"px-4 py-2\">Isolated restore execution</td><td class=\"px-4 py-2\">Your database dumps, transiently, during a drill</td></tr><tr><td class=\"px-4 py-2 font-medium\">Stripe</td><td class=\"px-4 py-2\">Billing</td><td class=\"px-4 py-2\">Billing contact + payment data (held by Stripe, not us)</td></tr><tr><td class=\"px-4 py-2 font-medium\">Postmark</td><td class=\"px-4 py-2\">Transactional email</td><td class=\"px-4 py-2\">Recipient email address + message content</td></tr><tr><td class=\"px-4 py-2 font-medium\">PostHog</td><td class=\"px-4 py-2\">Product analytics</td><td class=\"px-4 py-2\">Pseudonymous account/user IDs + event names</td></tr><tr><td class=\"px-4 py-2 font-medium\">Sentry</td><td class=\"px-4 py-2\">Error tracking</td><td class=\"px-4 py-2\">Error diagnostics tagged with an account ID</td></tr></tbody></table></div></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func LegalCookies() templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var7 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var7 == nil {
+			templ_7745c5c3_Var7 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div class=\"space-y-3 text-sm text-zinc-700 dark:text-zinc-300\"><p>The Restore Drill application sets only strictly-necessary cookies. We do not use advertising or cross-site tracking cookies, and product analytics is collected server-side — there is no analytics cookie in your browser.</p><p>Because every cookie below is strictly necessary to provide a service you asked for (a logged-in session), no consent banner is required under GDPR/ePrivacy.</p><div class=\"card overflow-x-auto p-0\"><table class=\"min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800\"><thead class=\"bg-zinc-50 dark:bg-zinc-900/50\"><tr><th class=\"px-4 py-2 text-left font-medium\">Cookie</th><th class=\"px-4 py-2 text-left font-medium\">Purpose</th><th class=\"px-4 py-2 text-left font-medium\">Category</th></tr></thead> <tbody class=\"divide-y divide-zinc-200 dark:divide-zinc-800\"><tr><td class=\"px-4 py-2 font-mono text-xs\">__Host-rd_session</td><td class=\"px-4 py-2\">Keeps you signed in</td><td class=\"px-4 py-2\">Strictly necessary</td></tr><tr><td class=\"px-4 py-2 font-mono text-xs\">__Host-rd_csrf</td><td class=\"px-4 py-2\">Protects forms against cross-site request forgery</td><td class=\"px-4 py-2\">Strictly necessary</td></tr></tbody></table></div><p class=\"text-xs text-zinc-500\">In local development the cookie names drop the <code>__Host-</code> prefix so they work without HTTPS.</p></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func LegalDPA() templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var8 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var8 == nil {
+			templ_7745c5c3_Var8 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"space-y-3 text-sm text-zinc-700 dark:text-zinc-300\"><p>This Data Processing Addendum describes how Restore Drill processes personal data on your behalf as a processor.</p><h2 class=\"text-base font-semibold\">Scope</h2><p>Restore Drill processes the data contained in the database dumps you register only to perform the verification you request. We do not access that data for any other purpose.</p><h2 class=\"text-base font-semibold\">Sub-processors</h2><p>A current sub-processor list will be published here before general availability. Material changes will be notified in advance.</p><h2 class=\"text-base font-semibold\">Security</h2><p>Drills run in isolated, ephemeral sandboxes. Evidence is signed and retained under access control. See the Privacy Policy for retention detail.</p></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

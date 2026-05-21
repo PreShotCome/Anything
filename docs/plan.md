@@ -529,3 +529,43 @@ analysis; weekly deliverability report; the email-verification flow
 
 ### When you're done
 Commit on `claude/restore-drill-phase-2-vHjzy`. Push and stop — no PR.
+
+---
+
+## Layer 10 — Compliance & legal polish
+
+### Goal
+Close the layer-10 gaps the earlier phases didn't cover. GDPR export/delete,
+retention, the audit log, and the SOC-2 control surface already landed in
+Phases 5–6; this layer is legal-page completeness, an honest cookie
+position, and WCAG 2.2 AA accessibility.
+
+### Locked decisions
+- **Sub-processor list:** `/legal/subprocessors` enumerates the third
+  parties that process data.
+- **Cookies:** the app sets only strictly-necessary cookies (session,
+  CSRF); analytics is server-side. Under GDPR that needs no consent banner
+  — a `/legal/cookies` page documents the cookies and states the position.
+- **Accessibility:** a WCAG 2.2 AA pass on the templates — skip link,
+  visible focus indicators, ARIA labels on controls without a visible
+  `<label>`, `aria-hidden` on decorative SVG, semantic landmarks.
+- **Automated a11y check:** a Go test renders pages and parses the HTML
+  (`golang.org/x/net/html`), asserting structural WCAG basics — runs in CI
+  with no browser. Full axe-core/Chromium is in the backlog.
+
+### Deliverables
+1. `/legal/subprocessors`, `/legal/cookies` pages + footer links.
+2. Layout: skip link, `#main-content` landmark id, account-switcher
+   aria-label, decorative-SVG `aria-hidden`, `aria-label` on the member
+   role select; `nav` landmarks.
+3. `assets/css`: `.skip-link`, a global `:focus-visible` indicator, and the
+   previously-undefined `.form-input` / `.form-hint` component classes.
+4. `internal/web/templates/a11y_test.go` — structural a11y assertions.
+5. `docs/backlog.md` — running log of deferred items across all layers.
+
+### Out of scope
+Stripe Tax (needs real Checkout); the marketing-site cookie banner;
+counsel-drafted legal copy (pages stay DRAFT); full axe-core in CI.
+
+### When you're done
+Commit on `claude/restore-drill-phase-2-vHjzy`. Push and stop — no PR.

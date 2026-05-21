@@ -177,7 +177,7 @@ templ memberRow(mem account.MembershipWithUser) {
 	<div class="flex items-center justify-end gap-2">
 		<form method="POST" action={ templ.SafeURL("/account/members/" + mem.UserID.String()) } class="flex items-center gap-1">
 			@CSRFField()
-			<select name="role" class="form-input py-1 text-xs">
+			<select name="role" aria-label={ "Role for " + mem.Email } class="form-input py-1 text-xs">
 				@roleOption("admin", mem.Role)
 				@roleOption("member", mem.Role)
 				@roleOption("viewer", mem.Role)

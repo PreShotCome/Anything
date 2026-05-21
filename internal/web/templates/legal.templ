@@ -68,6 +68,107 @@ templ LegalPrivacy() {
 	</div>
 }
 
+templ LegalSubprocessors() {
+	<div class="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
+		<p>
+			Restore Drill uses the third-party services below to process data
+			on your behalf. We notify customers in advance of material
+			changes to this list.
+		</p>
+		<div class="card overflow-x-auto p-0">
+			<table class="min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
+				<thead class="bg-zinc-50 dark:bg-zinc-900/50">
+					<tr>
+						<th class="px-4 py-2 text-left font-medium">Sub-processor</th>
+						<th class="px-4 py-2 text-left font-medium">Purpose</th>
+						<th class="px-4 py-2 text-left font-medium">Data</th>
+					</tr>
+				</thead>
+				<tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+					<tr>
+						<td class="px-4 py-2 font-medium">Managed Postgres host</td>
+						<td class="px-4 py-2">Primary application database</td>
+						<td class="px-4 py-2">Account, user, drill, and audit records</td>
+					</tr>
+					<tr>
+						<td class="px-4 py-2 font-medium">Object storage</td>
+						<td class="px-4 py-2">Evidence retention</td>
+						<td class="px-4 py-2">Signed drill report PDFs</td>
+					</tr>
+					<tr>
+						<td class="px-4 py-2 font-medium">Sandbox compute</td>
+						<td class="px-4 py-2">Isolated restore execution</td>
+						<td class="px-4 py-2">Your database dumps, transiently, during a drill</td>
+					</tr>
+					<tr>
+						<td class="px-4 py-2 font-medium">Stripe</td>
+						<td class="px-4 py-2">Billing</td>
+						<td class="px-4 py-2">Billing contact + payment data (held by Stripe, not us)</td>
+					</tr>
+					<tr>
+						<td class="px-4 py-2 font-medium">Postmark</td>
+						<td class="px-4 py-2">Transactional email</td>
+						<td class="px-4 py-2">Recipient email address + message content</td>
+					</tr>
+					<tr>
+						<td class="px-4 py-2 font-medium">PostHog</td>
+						<td class="px-4 py-2">Product analytics</td>
+						<td class="px-4 py-2">Pseudonymous account/user IDs + event names</td>
+					</tr>
+					<tr>
+						<td class="px-4 py-2 font-medium">Sentry</td>
+						<td class="px-4 py-2">Error tracking</td>
+						<td class="px-4 py-2">Error diagnostics tagged with an account ID</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+}
+
+templ LegalCookies() {
+	<div class="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
+		<p>
+			The Restore Drill application sets only strictly-necessary
+			cookies. We do not use advertising or cross-site tracking
+			cookies, and product analytics is collected server-side — there
+			is no analytics cookie in your browser.
+		</p>
+		<p>
+			Because every cookie below is strictly necessary to provide a
+			service you asked for (a logged-in session), no consent banner
+			is required under GDPR/ePrivacy.
+		</p>
+		<div class="card overflow-x-auto p-0">
+			<table class="min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
+				<thead class="bg-zinc-50 dark:bg-zinc-900/50">
+					<tr>
+						<th class="px-4 py-2 text-left font-medium">Cookie</th>
+						<th class="px-4 py-2 text-left font-medium">Purpose</th>
+						<th class="px-4 py-2 text-left font-medium">Category</th>
+					</tr>
+				</thead>
+				<tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+					<tr>
+						<td class="px-4 py-2 font-mono text-xs">__Host-rd_session</td>
+						<td class="px-4 py-2">Keeps you signed in</td>
+						<td class="px-4 py-2">Strictly necessary</td>
+					</tr>
+					<tr>
+						<td class="px-4 py-2 font-mono text-xs">__Host-rd_csrf</td>
+						<td class="px-4 py-2">Protects forms against cross-site request forgery</td>
+						<td class="px-4 py-2">Strictly necessary</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+		<p class="text-xs text-zinc-500">
+			In local development the cookie names drop the <code>__Host-</code>
+			prefix so they work without HTTPS.
+		</p>
+	</div>
+}
+
 templ LegalDPA() {
 	<div class="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
 		<p>

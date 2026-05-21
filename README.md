@@ -9,9 +9,9 @@ The marketing site lives in a separate repo.
 
 ## Status
 
-Layer 9 — growth. Transactional email, product analytics, feature flags,
-and the referral touch are wired into the app. (The Astro marketing site
-and its SEO live in a separate repo — Phase 7.)
+Layer 10 — compliance & legal polish. Sub-processor list, an honest cookie
+position, and a WCAG 2.2 AA accessibility pass with an automated check.
+(GDPR export/delete, retention, and the audit log landed in Phases 5–6.)
 
 Implemented:
 - Chi + Templ + HTMX + Tailwind monolith
@@ -45,6 +45,9 @@ Implemented:
 - Product analytics (PostHog seam) on signup / invite / drill events
 - Feature flags (env-driven) — `self_serve_signup` gates the signup route
 - `robots.txt`; "Verified by Restore Drill" referral footer on evidence PDFs
+- Legal pages: Terms, Privacy, DPA, Sub-processors, Cookie Policy
+- WCAG 2.2 AA pass — skip link, focus indicators, ARIA labels, landmarks —
+  with an automated structural a11y test (`golang.org/x/net/html`)
 
 ## Local development
 

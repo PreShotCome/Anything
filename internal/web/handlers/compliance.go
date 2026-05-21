@@ -71,3 +71,11 @@ func (h *Handlers) legalPrivacy(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) legalDPA(w http.ResponseWriter, r *http.Request) {
 	render(w, r, templates.LegalPage(h.layoutCtx(r), "Data Processing Addendum", templates.LegalDPA()))
 }
+
+func (h *Handlers) legalSubprocessors(w http.ResponseWriter, r *http.Request) {
+	render(w, r, templates.LegalPage(h.layoutCtx(r), "Sub-processors", templates.LegalSubprocessors()))
+}
+
+func (h *Handlers) legalCookies(w http.ResponseWriter, r *http.Request) {
+	render(w, r, templates.LegalPage(h.layoutCtx(r), "Cookie Policy", templates.LegalCookies()))
+}

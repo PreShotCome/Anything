@@ -182,6 +182,8 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 	r.Get("/legal/terms", h.legalTerms)
 	r.Get("/legal/privacy", h.legalPrivacy)
 	r.Get("/legal/dpa", h.legalDPA)
+	r.Get("/legal/subprocessors", h.legalSubprocessors)
+	r.Get("/legal/cookies", h.legalCookies)
 
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireUser)

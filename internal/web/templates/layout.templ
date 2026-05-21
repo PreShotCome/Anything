@@ -42,6 +42,7 @@ templ LayoutWith(title string, lc LayoutCtx) {
 			<script src="/static/account-switch.js" defer></script>
 		</head>
 		<body class="min-h-screen flex flex-col">
+			<a href="#main-content" class="skip-link">Skip to main content</a>
 			<header class="border-b border-zinc-200 dark:border-zinc-800">
 				<div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
 					<div class="flex items-center gap-3">
@@ -54,6 +55,7 @@ templ LayoutWith(title string, lc LayoutCtx) {
 									<select
 										name="account_id"
 										data-account-switcher
+										aria-label="Switch account"
 										class="rounded border border-zinc-300 bg-transparent px-2 py-1 text-sm dark:border-zinc-700"
 									>
 										for _, a := range lc.Accounts {
@@ -92,24 +94,26 @@ templ LayoutWith(title string, lc LayoutCtx) {
 					</nav>
 				</div>
 				if lc.User != nil && lc.Account != nil {
-					<div class="mx-auto flex max-w-5xl items-center gap-4 px-4 pb-2 text-sm">
+					<nav aria-label="Primary" class="mx-auto flex max-w-5xl items-center gap-4 px-4 pb-2 text-sm">
 						<a href="/dashboard" class="hover:underline">Dashboard</a>
 						<a href="/databases" class="hover:underline">Databases</a>
 						<a href="/drills" class="hover:underline">Drills</a>
 						<a href="/account" class="hover:underline">Account</a>
-					</div>
+					</nav>
 				}
 			</header>
-			<main class="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+			<main id="main-content" class="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
 				{ children... }
 			</main>
 			<footer class="border-t border-zinc-200 px-4 py-4 text-center text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
 				<p>Restore Drill — backup verification as a service.</p>
-				<p class="mt-1 flex justify-center gap-3">
+				<nav aria-label="Legal" class="mt-1 flex justify-center gap-3">
 					<a href="/legal/terms" class="hover:underline">Terms</a>
 					<a href="/legal/privacy" class="hover:underline">Privacy</a>
 					<a href="/legal/dpa" class="hover:underline">DPA</a>
-				</p>
+					<a href="/legal/subprocessors" class="hover:underline">Sub-processors</a>
+					<a href="/legal/cookies" class="hover:underline">Cookies</a>
+				</nav>
 			</footer>
 		</body>
 	</html>
