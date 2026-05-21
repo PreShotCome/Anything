@@ -24,8 +24,11 @@ import (
 	"github.com/preshotcome/anything/internal/db"
 	"github.com/preshotcome/anything/internal/drill"
 	"github.com/preshotcome/anything/internal/drill/steps"
+	"github.com/preshotcome/anything/internal/ratelimit"
 	"github.com/preshotcome/anything/internal/runner"
+	"github.com/preshotcome/anything/internal/web/csrf"
 	"github.com/preshotcome/anything/internal/web/handlers"
+	"github.com/preshotcome/anything/internal/webhooks"
 )
 
 func main() {
@@ -66,6 +69,7 @@ func main() {
 	}
 
 	localRunner := runner.NewLocalRunner(cfg.DatabaseURL)
+	webhookStore := webhooks.NewStore(pool)
 
 	workers := river.NewWorkers()
 	riverClient, err := newRiverClient(rootCtx, pool, workers)
@@ -74,13 +78,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	webhookDispatch := webhooks.NewDispatcher(webhookStore, riverClient)
+
 	steps.Register(workers, steps.Deps{
 		Store:       drillStore,
 		Runner:      localRunner,
 		Inserter:    riverClient,
 		Audit:       auditLog,
 		EvidenceDir: evidenceDir,
+		Webhooks:    webhookDispatch,
 	})
+	river.AddWorker(workers, webhooks.NewDeliverWorker(webhookStore))
 
 	if err := riverClient.Start(rootCtx); err != nil {
 		logger.Error("river start", "err", err)
@@ -94,14 +102,27 @@ func main() {
 
 	orch := drill.NewOrchestrator(drillStore, riverClient, auditLog)
 
+	// Perimeter: login throttle + per-IP / per-account rate limiters.
+	loginThrottle := auth.NewLoginThrottle(pool, 5, 15*time.Minute)
+	authLimiter := ratelimit.New(20, 10)  // 20/min, burst 10 — login/signup
+	appLimiter := ratelimit.New(300, 100) // 300/min, burst 100 — authed traffic
+	authLimiter.StartSweeper(rootCtx.Done(), 5*time.Minute, 15*time.Minute)
+	appLimiter.StartSweeper(rootCtx.Done(), 5*time.Minute, 15*time.Minute)
+
 	h := handlers.New(handlers.Deps{
-		Pool:         pool,
-		Sessions:     sessionStore,
-		Audit:        auditLog,
-		Drills:       drillStore,
-		Orchestrator: orch,
-		Accounts:     accountStore,
-		Billing:      billingCustomers,
+		Pool:            pool,
+		Sessions:        sessionStore,
+		Audit:           auditLog,
+		Drills:          drillStore,
+		Orchestrator:    orch,
+		Accounts:        accountStore,
+		Billing:         billingCustomers,
+		Throttle:        loginThrottle,
+		Webhooks:        webhookStore,
+		WebhookDispatch: webhookDispatch,
+		CSRF:            csrf.New(cfg.IsProduction()),
+		AuthLimiter:     authLimiter,
+		AppLimiter:      appLimiter,
 	})
 
 	staticDir, _ := filepath.Abs("assets/static")

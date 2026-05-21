@@ -342,3 +342,53 @@ login (P4); CSRF/rate-limits/API idempotency-header (P4); plan enforcement
 
 ### When you're done
 Commit on `claude/restore-drill-phase-2-vHjzy`. Push and stop — no PR.
+
+---
+
+## Phase 4 — Production perimeter + webhooks
+
+### Goal
+Make the app safe to face the public internet, and ship the first outbound
+integration. Two halves: perimeter hardening (CSRF, rate limiting, login
+brute-force throttle) and HMAC-signed webhooks with retry + delivery log.
+MFA / magic-link / social login are layer-5 identity work, deferred.
+
+### Locked decisions
+- **CSRF:** double-submit cookie + per-request hidden `_csrf` token on every
+  unsafe verb. Middleware runs on all requests; templ `@CSRFField()` reads
+  the token from `ctx`.
+- **Rate limiting:** in-process token bucket (no Redis). Tight per-IP bucket
+  on `/login`+`/signup`; looser per-account bucket on authenticated routes.
+  `429` + `Retry-After`.
+- **Login throttle:** `login_attempts` ledger; lock an email after N
+  failures in a rolling window; a success clears the streak.
+- **Webhooks:** per-account endpoints; `drill.completed`/`drill.failed`
+  enqueue a River delivery job; payload signed
+  `X-RestoreDrill-Signature: sha256=<hmac>`. River handles retry. Deliveries
+  persisted + shown in the dashboard; replay creates a fresh delivery row.
+- **Secrets:** `runbooks/secret-rotation.md`.
+
+### Data model (new migration)
+`webhook_endpoints`, `webhook_deliveries`, `login_attempts`;
+`audit_events.account_id` was already added in Phase 3.
+
+### Concrete deliverables
+1. `internal/web/csrf` — middleware + `@CSRFField()` templ helper.
+2. `internal/ratelimit` — token-bucket limiter + middleware.
+3. `internal/auth.LoginThrottle` — failed-attempt ledger + lockout.
+4. `internal/webhooks` — endpoint/delivery store, HMAC signer, River
+   delivery worker, dispatcher.
+5. Drill teardown worker fans `drill.completed`/`drill.failed` to webhooks.
+6. `/account/webhooks` UI: list/create/delete endpoints, delivery log, replay.
+7. CSRF field in every form; rate-limit middleware on the router.
+8. `runbooks/secret-rotation.md`.
+9. Tests: CSRF accept/reject, rate-limit 429, login lockout, webhook
+   signature, webhook delivery + dispatch fan-out.
+
+### Out of scope
+Inbound JSON `/v1/` API; MFA/magic-link/social login; Stripe
+Checkout/inbound webhooks; OTel/observability; SSRF-blocking of webhook
+target IPs (noted in the runbook).
+
+### When you're done
+Commit on `claude/restore-drill-phase-2-vHjzy`. Push and stop — no PR.

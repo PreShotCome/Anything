@@ -36,6 +36,17 @@ templ AccountSettings(lc LayoutCtx, members []account.MembershipWithUser, pendin
 		</section>
 
 		<section class="mb-8">
+			<h2 class="mb-3 text-lg font-semibold">Integrations</h2>
+			<div class="card flex items-center justify-between">
+				<div>
+					<p class="text-sm font-medium">Webhooks</p>
+					<p class="text-xs text-zinc-500">Signed event notifications when drills finish.</p>
+				</div>
+				<a href="/account/webhooks" class="btn-ghost text-sm">Manage webhooks</a>
+			</div>
+		</section>
+
+		<section class="mb-8">
 			<h2 class="mb-3 text-lg font-semibold">Members</h2>
 			<div class="card overflow-x-auto p-0">
 				<table class="min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
@@ -76,6 +87,7 @@ templ AccountSettings(lc LayoutCtx, members []account.MembershipWithUser, pendin
 			<section class="mb-8">
 				<h2 class="mb-3 text-lg font-semibold">Invite a member</h2>
 				<form method="POST" action="/account/invitations" class="card flex flex-wrap items-end gap-3">
+					@CSRFField()
 					<div class="flex-1 min-w-[14rem]">
 						<label class="mb-1 block text-sm font-medium" for="invite_email">Email</label>
 						<input id="invite_email" name="email" type="email" required class="form-input" placeholder="teammate@example.com"/>
@@ -112,6 +124,7 @@ templ AccountSettings(lc LayoutCtx, members []account.MembershipWithUser, pendin
 templ memberRow(mem account.MembershipWithUser) {
 	<div class="flex items-center justify-end gap-2">
 		<form method="POST" action={ templ.SafeURL("/account/members/" + mem.UserID.String()) } class="flex items-center gap-1">
+			@CSRFField()
 			<select name="role" class="form-input py-1 text-xs">
 				@roleOption("admin", mem.Role)
 				@roleOption("member", mem.Role)
@@ -120,6 +133,7 @@ templ memberRow(mem account.MembershipWithUser) {
 			<button type="submit" class="btn-ghost text-xs">Save</button>
 		</form>
 		<form method="POST" action={ templ.SafeURL("/account/members/" + mem.UserID.String() + "/remove") }>
+			@CSRFField()
 			<button type="submit" class="btn-ghost text-xs text-rose-600 dark:text-rose-400">Remove</button>
 		</form>
 	</div>

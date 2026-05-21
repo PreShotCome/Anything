@@ -16,6 +16,7 @@ templ InvitationAccept(user *auth.User, isLoggedIn bool, acct account.Account, i
 			if isLoggedIn {
 				<p class="text-xs text-zinc-500">Signed in as { user.Email }</p>
 				<form method="POST" action={ templ.SafeURL("/invitations/" + token + "/accept") }>
+					@CSRFField()
 					<button type="submit" class="btn-primary w-full">Accept invitation</button>
 				</form>
 			} else {

@@ -15,6 +15,7 @@ templ DrillsPage(lc LayoutCtx, drills []drill.Drill, targets []drill.Target, ide
 		if lc.Membership != nil && auth.Allowed(lc.Membership.Role, auth.ActionDrillWrite) {
 			if len(targets) > 0 {
 				<form method="POST" action="/drills" class="card mb-6 flex flex-wrap items-end gap-3">
+					@CSRFField()
 					<input type="hidden" name="idempotency_key" value={ idemKey }/>
 					<div class="flex-1 min-w-[14rem]">
 						<label class="mb-1 block text-sm font-medium" for="target_id">Run drill against</label>

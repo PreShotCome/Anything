@@ -13,38 +13,59 @@ import (
 	"github.com/preshotcome/anything/internal/auth"
 	"github.com/preshotcome/anything/internal/billing"
 	"github.com/preshotcome/anything/internal/drill"
+	"github.com/preshotcome/anything/internal/ratelimit"
+	"github.com/preshotcome/anything/internal/web/csrf"
 	"github.com/preshotcome/anything/internal/web/templates"
+	"github.com/preshotcome/anything/internal/webhooks"
 )
 
 type Handlers struct {
-	pool     *pgxpool.Pool
-	sessions *auth.Store
-	audit    *audit.Logger
-	drills   *drill.Store
-	orch     *drill.Orchestrator
-	accounts *account.Store
-	billing  billing.Customers
+	pool            *pgxpool.Pool
+	sessions        *auth.Store
+	audit           *audit.Logger
+	drills          *drill.Store
+	orch            *drill.Orchestrator
+	accounts        *account.Store
+	billing         billing.Customers
+	throttle        *auth.LoginThrottle
+	webhooks        *webhooks.Store
+	webhookDispatch *webhooks.Dispatcher
+	csrf            *csrf.Protector
+	authLimiter     *ratelimit.Limiter
+	appLimiter      *ratelimit.Limiter
 }
 
 type Deps struct {
-	Pool         *pgxpool.Pool
-	Sessions     *auth.Store
-	Audit        *audit.Logger
-	Drills       *drill.Store
-	Orchestrator *drill.Orchestrator
-	Accounts     *account.Store
-	Billing      billing.Customers
+	Pool            *pgxpool.Pool
+	Sessions        *auth.Store
+	Audit           *audit.Logger
+	Drills          *drill.Store
+	Orchestrator    *drill.Orchestrator
+	Accounts        *account.Store
+	Billing         billing.Customers
+	Throttle        *auth.LoginThrottle
+	Webhooks        *webhooks.Store
+	WebhookDispatch *webhooks.Dispatcher
+	CSRF            *csrf.Protector
+	AuthLimiter     *ratelimit.Limiter
+	AppLimiter      *ratelimit.Limiter
 }
 
 func New(d Deps) *Handlers {
 	return &Handlers{
-		pool:     d.Pool,
-		sessions: d.Sessions,
-		audit:    d.Audit,
-		drills:   d.Drills,
-		orch:     d.Orchestrator,
-		accounts: d.Accounts,
-		billing:  d.Billing,
+		pool:            d.Pool,
+		sessions:        d.Sessions,
+		audit:           d.Audit,
+		drills:          d.Drills,
+		orch:            d.Orchestrator,
+		accounts:        d.Accounts,
+		billing:         d.Billing,
+		throttle:        d.Throttle,
+		webhooks:        d.Webhooks,
+		webhookDispatch: d.WebhookDispatch,
+		csrf:            d.CSRF,
+		authLimiter:     d.AuthLimiter,
+		appLimiter:      d.AppLimiter,
 	}
 }
 
@@ -78,6 +99,7 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 	r.Use(securityHeaders)
 	r.Use(h.sessions.LoadUser)
 	r.Use(h.sessions.LoadCurrentAccount(h.accounts))
+	r.Use(h.csrf.Middleware)
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -87,10 +109,17 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(staticFS)))
 
 	r.Get("/", h.index)
-	r.Get("/login", h.loginPage)
-	r.Post("/login", h.loginSubmit)
-	r.Get("/signup", h.signupPage)
-	r.Post("/signup", h.signupSubmit)
+
+	// Auth endpoints get a tight per-IP rate limit on top of the login
+	// throttle: the throttle protects one account, the limiter protects the
+	// whole box from a credential-stuffing flood.
+	r.Group(func(r chi.Router) {
+		r.Use(h.authLimiter.Middleware(clientIPKey))
+		r.Get("/login", h.loginPage)
+		r.Post("/login", h.loginSubmit)
+		r.Get("/signup", h.signupPage)
+		r.Post("/signup", h.signupSubmit)
+	})
 	r.Post("/logout", h.logout)
 
 	// Invitation accept page — public so the recipient can land before
@@ -101,6 +130,8 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireUser)
 		r.Use(auth.RequireAccount)
+		// Authenticated traffic is rate-limited per account.
+		r.Use(h.appLimiter.Middleware(accountKey))
 
 		r.Get("/dashboard", h.dashboard)
 		r.Post("/account/switch", h.accountSwitch)
@@ -123,6 +154,8 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAction(auth.ActionAccountRead))
 			r.Get("/account", h.accountSettings)
+			r.Get("/account/webhooks", h.webhooksList)
+			r.Get("/account/webhooks/{id}/deliveries", h.webhookDeliveries)
 		})
 
 		// Writes (RBAC-gated)
@@ -141,9 +174,30 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 			r.Post("/account/members/{user_id}", h.memberUpdate)
 			r.Post("/account/members/{user_id}/remove", h.memberRemove)
 		})
+		// Webhook management is an account-write concern.
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAction(auth.ActionAccountWrite))
+			r.Post("/account/webhooks", h.webhookCreate)
+			r.Post("/account/webhooks/{id}/delete", h.webhookDelete)
+			r.Post("/account/webhooks/{id}/deliveries/{delivery_id}/replay", h.webhookReplay)
+		})
 	})
 
 	return r
+}
+
+// clientIPKey buckets the rate limiter by client IP.
+func clientIPKey(r *http.Request) string {
+	return "ip:" + audit.ClientIP(r)
+}
+
+// accountKey buckets by current account, falling back to IP when somehow
+// account context is missing (shouldn't happen behind RequireAccount).
+func accountKey(r *http.Request) string {
+	if a, ok := auth.CurrentAccountFromContext(r.Context()); ok {
+		return "acct:" + a.ID.String()
+	}
+	return "ip:" + audit.ClientIP(r)
 }
 
 // securityHeaders sets a baseline set of headers. CSP is intentionally strict;

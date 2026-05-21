@@ -76,6 +76,7 @@ templ TargetNewForm(lc LayoutCtx, values TargetFormValues, errMsg string) {
 	@LayoutWith("Connect a database", lc) {
 		<h1 class="mb-4 text-2xl font-semibold tracking-tight">Connect a database</h1>
 		<form method="POST" action="/databases" class="card max-w-xl space-y-4">
+			@CSRFField()
 			if errMsg != "" {
 				<div class="alert-error">{ errMsg }</div>
 			}

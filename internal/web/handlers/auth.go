@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -45,6 +46,20 @@ func (h *Handlers) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Brute-force throttle: refuse early when this email has too many recent
+	// failures, regardless of whether the submitted password is right.
+	if lock, err := h.throttle.Check(r.Context(), email); err == nil && lock.Locked {
+		mins := int(lock.RetryAfter.Minutes()) + 1
+		w.Header().Set("Retry-After", strconv.Itoa(int(lock.RetryAfter.Seconds())+1))
+		w.WriteHeader(http.StatusTooManyRequests)
+		render(w, r, templates.LoginWithNext(
+			"Too many failed attempts. Try again in about "+strconv.Itoa(mins)+" minute(s).",
+			email, next))
+		return
+	}
+
+	clientIP := audit.ClientIP(r)
+
 	var id uuid.UUID
 	var hash string
 	err := h.pool.QueryRow(r.Context(), `
@@ -54,22 +69,26 @@ func (h *Handlers) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Constant-ish time: always run a verify against a dummy hash.
 		_ = auth.VerifyPassword(password, dummyHash)
+		_ = h.throttle.Record(r.Context(), email, clientIP, false)
 		w.WriteHeader(http.StatusUnauthorized)
 		render(w, r, templates.LoginWithNext("Invalid email or password.", email, next))
 		return
 	}
 
 	if err := auth.VerifyPassword(password, hash); err != nil {
+		_ = h.throttle.Record(r.Context(), email, clientIP, false)
 		_ = h.audit.Record(r.Context(), audit.Event{
 			Action:    "login.failed",
 			TargetID:  id.String(),
-			IP:        audit.ClientIP(r),
+			IP:        clientIP,
 			UserAgent: r.UserAgent(),
 		})
 		w.WriteHeader(http.StatusUnauthorized)
 		render(w, r, templates.LoginWithNext("Invalid email or password.", email, next))
 		return
 	}
+
+	_ = h.throttle.Record(r.Context(), email, clientIP, true)
 
 	// Pick an account to land them on: prefer their personal account if it
 	// still exists; otherwise any account they're a member of.
@@ -83,7 +102,7 @@ func (h *Handlers) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		AccountID: nilIfZero(currentAccount),
 		ActorID:   &id,
 		Action:    "login.succeeded",
-		IP:        audit.ClientIP(r),
+		IP:        clientIP,
 		UserAgent: r.UserAgent(),
 	})
 	http.Redirect(w, r, redirectTarget(next), http.StatusSeeOther)

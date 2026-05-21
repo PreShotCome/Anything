@@ -25,6 +25,7 @@ import (
 	"github.com/preshotcome/anything/internal/drill"
 	"github.com/preshotcome/anything/internal/report"
 	"github.com/preshotcome/anything/internal/runner"
+	"github.com/preshotcome/anything/internal/webhooks"
 )
 
 // Deps is the bundle of dependencies every step worker needs.
@@ -34,6 +35,9 @@ type Deps struct {
 	Inserter    drill.RiverInserter
 	Audit       *audit.Logger
 	EvidenceDir string // e.g. ./tmp/evidence
+	// Webhooks fans drill.completed/drill.failed out to customer endpoints.
+	// Optional: nil disables webhook dispatch (e.g. in unit tests).
+	Webhooks *webhooks.Dispatcher
 }
 
 // Register attaches every step worker to the given River workers registry.
@@ -454,10 +458,18 @@ func (w *TeardownWorker) Work(ctx context.Context, job *river.Job[drill.Teardown
 			TargetKind: "drill", TargetID: drillID.String(),
 			Metadata: map[string]any{"reason": job.Args.FailureReason},
 		})
+		w.D.dispatchWebhook(ctx, acct, "drill.failed", map[string]any{
+			"drill_id": drillID.String(),
+			"reason":   job.Args.FailureReason,
+		})
 		return nil
 	}
 	if dr.Status == drill.StatusFailed {
 		// Already marked by report worker for assertion failures.
+		w.D.dispatchWebhook(ctx, acct, "drill.failed", map[string]any{
+			"drill_id": drillID.String(),
+			"reason":   "assertion_failed",
+		})
 		return nil
 	}
 
@@ -478,7 +490,21 @@ func (w *TeardownWorker) Work(ctx context.Context, job *river.Job[drill.Teardown
 		ActorID:   &dr.CreatedByUserID, Action: "drill.completed",
 		TargetKind: "drill", TargetID: drillID.String(),
 	})
+	w.D.dispatchWebhook(ctx, acct, "drill.completed", map[string]any{
+		"drill_id": drillID.String(),
+		"status":   "succeeded",
+	})
 	return nil
+}
+
+// dispatchWebhook fans a drill event out to the account's webhook endpoints.
+// Best-effort: webhook problems must not fail the drill, so errors are
+// swallowed (the delivery log surfaces them on its own).
+func (d Deps) dispatchWebhook(ctx context.Context, accountID uuid.UUID, event string, data map[string]any) {
+	if d.Webhooks == nil {
+		return
+	}
+	_ = d.Webhooks.Dispatch(ctx, accountID, event, data)
 }
 
 func (w *TeardownWorker) Timeout(*river.Job[drill.TeardownArgs]) time.Duration {

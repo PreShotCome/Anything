@@ -9,8 +9,9 @@ The marketing site lives in a separate repo.
 
 ## Status
 
-Phase 3 — multi-tenant. Accounts, memberships, RBAC, and a billing skeleton
-sit on top of the Phase 2 drill workflow.
+Phase 4 — production perimeter + webhooks. CSRF, rate limiting, and login
+brute-force throttling harden the app for public traffic; HMAC-signed
+webhooks are the first customer-facing integration.
 
 Implemented:
 - Chi + Templ + HTMX + Tailwind monolith
@@ -25,6 +26,10 @@ Implemented:
 - RBAC (`owner`/`admin`/`member`/`viewer`) via a single `Authorize` matrix
 - Email invitations (dev: link logged to stdout), account switcher
 - Stripe billing skeleton — degrades to a no-op without `STRIPE_SECRET_KEY`
+- CSRF double-submit-cookie protection on every unsafe verb
+- In-process token-bucket rate limiting (per-IP on auth, per-account elsewhere)
+- Login brute-force throttle (lockout after repeated failures)
+- HMAC-SHA256-signed webhooks with River-backed retry, delivery log, replay
 
 ## Local development
 
@@ -62,9 +67,11 @@ skips.
 ```
 cmd/server               HTTP + River worker entrypoint
 cmd/migrate              goose + River migration CLI
-internal/auth            sessions, password hashing, RBAC
+internal/auth            sessions, password hashing, RBAC, login throttle
 internal/account         accounts, memberships, invitations
 internal/billing         Stripe customer wrapper (+ noop fallback)
+internal/ratelimit       token-bucket limiter + middleware
+internal/webhooks        signed webhook endpoints, delivery worker, dispatch
 internal/db              pgx pool, transaction helpers
 internal/drill           drill domain (targets, drills, steps, results)
 internal/drill/steps     River workers for each pipeline step
@@ -72,7 +79,9 @@ internal/runner          Runner interface + LocalRunner + FlyMachineRunner stub
 internal/assertions      assertion kinds (Phase 2: row_count)
 internal/report          PDF rendering
 internal/web             handlers + Templ templates
+internal/web/csrf        CSRF double-submit middleware
 migrations               goose SQL migrations
+runbooks                 operational runbooks
 testdata/fixtures        seeded pg_dump used by local dev + CI
 assets                   Tailwind input, static files (HTMX, app.css)
 ```

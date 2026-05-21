@@ -50,6 +50,7 @@ templ LayoutWith(title string, lc LayoutCtx) {
 							<span class="hidden text-zinc-300 sm:inline dark:text-zinc-700">/</span>
 							if len(lc.Accounts) > 1 {
 								<form method="POST" action="/account/switch" class="hidden items-center gap-1 sm:flex">
+									@CSRFField()
 									<select
 										name="account_id"
 										data-account-switcher
@@ -81,6 +82,7 @@ templ LayoutWith(title string, lc LayoutCtx) {
 						if lc.User != nil {
 							<span class="text-zinc-500 dark:text-zinc-400">{ lc.User.Email }</span>
 							<form method="POST" action="/logout" class="inline">
+								@CSRFField()
 								<button type="submit" class="btn-ghost">Sign out</button>
 							</form>
 						} else {
