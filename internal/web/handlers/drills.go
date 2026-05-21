@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -13,6 +15,7 @@ import (
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/auth"
 	"github.com/preshotcome/anything/internal/drill"
+	"github.com/preshotcome/anything/internal/evidence"
 	"github.com/preshotcome/anything/internal/web/templates"
 )
 
@@ -163,7 +166,14 @@ func (h *Handlers) drillDetail(w http.ResponseWriter, r *http.Request) {
 	target, _ := h.drills.GetTargetByID(r.Context(), dr.TargetID)
 	steps, _ := h.drills.ListSteps(r.Context(), dr.ID)
 	ars, _ := h.drills.ListAssertions(r.Context(), dr.ID)
-	render(w, r, templates.DrillDetail(lc, dr, target, steps, ars))
+
+	// Re-verify the evidence signature on every detail view so the page
+	// shows a live tamper-check, not a cached claim.
+	var verify evidence.VerifyResult
+	if dr.EvidencePath != nil && *dr.EvidencePath != "" {
+		verify, _ = h.evidence.Verify(r.Context(), dr.ID, *dr.EvidencePath)
+	}
+	render(w, r, templates.DrillDetail(lc, dr, target, steps, ars, verify))
 }
 
 func (h *Handlers) drillStepsPartial(w http.ResponseWriter, r *http.Request) {
@@ -204,13 +214,12 @@ func (h *Handlers) drillEvidence(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "evidence not yet generated", http.StatusNotFound)
 		return
 	}
-	f, err := os.Open(*dr.EvidencePath)
+	f, err := h.evidence.Open(r.Context(), *dr.EvidencePath)
 	if err != nil {
 		http.Error(w, "open evidence: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer f.Close()
-	st, _ := f.Stat()
 
 	_ = h.audit.Record(r.Context(), audit.Event{
 		AccountID: &acct.ID, ActorID: &u.ID, Action: "evidence.downloaded",
@@ -220,11 +229,14 @@ func (h *Handlers) drillEvidence(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", `attachment; filename="restore-drill-`+dr.ID.String()+`.pdf"`)
-	if st != nil {
-		http.ServeContent(w, r, "", st.ModTime(), f)
+	// Read into memory so we can ServeContent with a seekable reader; drill
+	// PDFs are small (single page).
+	body, err := io.ReadAll(f)
+	if err != nil {
+		http.Error(w, "read evidence: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	http.ServeContent(w, r, "", time.Time{}, f)
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(body))
 }
 
 func atoiInRange(s string, lo, hi int) (int, error) {

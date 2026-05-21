@@ -1,6 +1,8 @@
 package templates
 
 import (
+	"time"
+
 	"github.com/preshotcome/anything/internal/account"
 	"github.com/preshotcome/anything/internal/auth"
 )
@@ -117,6 +119,56 @@ templ AccountSettings(lc LayoutCtx, members []account.MembershipWithUser, pendin
 				}
 			</section>
 		}
+
+		if lc.Membership != nil && auth.Allowed(lc.Membership.Role, auth.ActionAccountWrite) {
+			<section class="mb-8">
+				<h2 class="mb-3 text-lg font-semibold">Data &amp; privacy</h2>
+				<div class="card flex items-center justify-between">
+					<div>
+						<p class="text-sm font-medium">Export account data</p>
+						<p class="text-xs text-zinc-500">Download everything we hold for this account as JSON (GDPR/CCPA).</p>
+					</div>
+					<a href="/account/export" class="btn-ghost text-sm">Export JSON</a>
+				</div>
+			</section>
+
+			if lc.Membership.Role == account.RoleOwner {
+				<section class="mb-8">
+					<h2 class="mb-3 text-lg font-semibold text-rose-700 dark:text-rose-400">Danger zone</h2>
+					<div class="card border-rose-200 dark:border-rose-900">
+						<p class="mb-1 text-sm font-medium">Delete this account</p>
+						<p class="mb-3 text-xs text-zinc-500">
+							The account is soft-deleted immediately and permanently
+							erased — including all drills and signed evidence — after a
+							30-day grace period.
+						</p>
+						<form method="POST" action="/account/delete">
+							@CSRFField()
+							<button type="submit" class="btn-ghost text-sm text-rose-600 dark:text-rose-400">
+								Delete account
+							</button>
+						</form>
+					</div>
+				</section>
+			}
+		}
+	}
+}
+
+templ AccountDeleted(purgeAfter time.Time) {
+	@Layout("Account deleted", nil) {
+		<div class="card mx-auto max-w-md space-y-2 text-center">
+			<h1 class="text-xl font-semibold">Account scheduled for deletion</h1>
+			<p class="text-sm text-zinc-600 dark:text-zinc-400">
+				The account is now soft-deleted. All data — drills, evidence,
+				webhooks — will be permanently erased after
+				{ purgeAfter.UTC().Format("2006-01-02 15:04 UTC") }.
+			</p>
+			<p class="text-xs text-zinc-500">
+				Contact support before then if this was a mistake.
+			</p>
+			<a href="/" class="btn-ghost mt-2 inline-block">Go home</a>
+		</div>
 	}
 }
 

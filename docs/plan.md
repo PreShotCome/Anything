@@ -392,3 +392,47 @@ target IPs (noted in the runbook).
 
 ### When you're done
 Commit on `claude/restore-drill-phase-2-vHjzy`. Push and stop — no PR.
+
+---
+
+## Phase 5 — Compliance: evidence integrity + data rights
+
+### Goal
+Make evidence tamper-evident and retained, and wire the GDPR/CCPA
+data-rights endpoints. External trust anchors (DigiCert cert, RFC 3161 TSA,
+S3 Object Lock) are interface seams with working local implementations —
+the Phase 2 Fly Machines pattern.
+
+### Locked decisions
+- **Evidence signing:** detached Ed25519 signature over `sha256(pdf) ‖
+  signed_at`. `evidence.Signer` loads a PKCS#8 PEM key from
+  `EVIDENCE_SIGNING_KEY`; unset → ephemeral dev key + logged warning.
+  Persisted in `evidence_signatures`.
+- **Evidence store:** `evidence.Store` interface — `LocalStore` (default) +
+  `S3Store` stub. Retention enforced in the app layer.
+- **Retention:** evidence + audit 7y, `login_attempts` 30d; a River
+  periodic job sweeps and refuses to purge evidence before `retain_until`.
+- **GDPR export:** `GET /account/export` → JSON of everything held.
+- **GDPR deletion:** `POST /account/delete` soft-deletes (30-day grace) +
+  schedules a River hard-delete job that removes rows and shreds evidence.
+- **Legal:** `/legal/{terms,privacy,dpa}` placeholder pages + footer links.
+
+### Data model
+`evidence_signatures`; `accounts.purge_after`.
+
+### Deliverables
+1. `internal/evidence` — Store (Local + S3 stub), Signer, Service.
+2. `internal/compliance` — Exporter, Purger (soft + hard delete), retention
+   Sweeper + River periodic job.
+3. Report worker renders to bytes → `evidence.Service.Finalize` signs +
+   stores. Drill detail shows a live verify result.
+4. `/account/export`, `/account/delete`, `/legal/*` routes + UI.
+5. Tests: sign/verify + tamper detection, Finalize→Verify, retention purge
+   respects retain_until, export completeness, soft→hard delete + shred.
+
+### Out of scope
+Real DigiCert procurement, RFC 3161 ASN.1 wire format, real S3/Object Lock
+API calls (all seams); OTel (P6); marketing site (P7).
+
+### When you're done
+Commit on `claude/restore-drill-phase-2-vHjzy`. Push and stop — no PR.

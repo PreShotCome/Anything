@@ -9,25 +9,27 @@ import (
 )
 
 type Config struct {
-	Addr            string
-	DatabaseURL     string
-	SessionKey      []byte
-	Environment     string
-	IdleTimeout     time.Duration
-	AbsoluteMaxAge  time.Duration
-	EvidenceDir     string
-	StripeSecretKey string
+	Addr               string
+	DatabaseURL        string
+	SessionKey         []byte
+	Environment        string
+	IdleTimeout        time.Duration
+	AbsoluteMaxAge     time.Duration
+	EvidenceDir        string
+	StripeSecretKey    string
+	EvidenceSigningKey string
 }
 
 func Load() (Config, error) {
 	c := Config{
-		Addr:            getenv("ADDR", ":8080"),
-		DatabaseURL:     os.Getenv("DATABASE_URL"),
-		Environment:     getenv("ENV", "dev"),
-		IdleTimeout:     14 * 24 * time.Hour,
-		AbsoluteMaxAge:  30 * 24 * time.Hour,
-		EvidenceDir:     getenv("EVIDENCE_DIR", "tmp/evidence"),
-		StripeSecretKey: os.Getenv("STRIPE_SECRET_KEY"),
+		Addr:               getenv("ADDR", ":8080"),
+		DatabaseURL:        os.Getenv("DATABASE_URL"),
+		Environment:        getenv("ENV", "dev"),
+		IdleTimeout:        14 * 24 * time.Hour,
+		AbsoluteMaxAge:     30 * 24 * time.Hour,
+		EvidenceDir:        getenv("EVIDENCE_DIR", "tmp/evidence"),
+		StripeSecretKey:    os.Getenv("STRIPE_SECRET_KEY"),
+		EvidenceSigningKey: os.Getenv("EVIDENCE_SIGNING_KEY"),
 	}
 
 	if c.DatabaseURL == "" {

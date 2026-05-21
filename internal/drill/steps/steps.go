@@ -10,10 +10,10 @@
 package steps
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,6 +23,7 @@ import (
 	"github.com/preshotcome/anything/internal/assertions"
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/drill"
+	"github.com/preshotcome/anything/internal/evidence"
 	"github.com/preshotcome/anything/internal/report"
 	"github.com/preshotcome/anything/internal/runner"
 	"github.com/preshotcome/anything/internal/webhooks"
@@ -30,11 +31,12 @@ import (
 
 // Deps is the bundle of dependencies every step worker needs.
 type Deps struct {
-	Store       *drill.Store
-	Runner      runner.Runner
-	Inserter    drill.RiverInserter
-	Audit       *audit.Logger
-	EvidenceDir string // e.g. ./tmp/evidence
+	Store    *drill.Store
+	Runner   runner.Runner
+	Inserter drill.RiverInserter
+	Audit    *audit.Logger
+	// Evidence stores + signs the rendered report PDF.
+	Evidence *evidence.Service
 	// Webhooks fans drill.completed/drill.failed out to customer endpoints.
 	// Optional: nil disables webhook dispatch (e.g. in unit tests).
 	Webhooks *webhooks.Dispatcher
@@ -373,11 +375,17 @@ func (w *ReportWorker) Work(ctx context.Context, job *river.Job[drill.ReportArgs
 		dr.Error = &msg
 	}
 
-	path := filepath.Join(w.D.EvidenceDir, drillID.String()+".pdf")
-	if err := report.RenderToFile(path, report.Data{
+	// Render the PDF to memory, then hand it to the evidence service, which
+	// stores it and records a detached signature + retention horizon.
+	var buf bytes.Buffer
+	if err := report.Render(&buf, report.Data{
 		Drill: dr, Target: target, Steps: steps, Assertions: ars,
 		GeneratedAt: time.Now().UTC(),
 	}); err != nil {
+		return w.D.failAndCleanup(ctx, drillID, drill.StepReport, err.Error())
+	}
+	path, err := w.D.Evidence.Finalize(ctx, drillID, buf.Bytes())
+	if err != nil {
 		return w.D.failAndCleanup(ctx, drillID, drill.StepReport, err.Error())
 	}
 

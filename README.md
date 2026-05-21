@@ -9,9 +9,8 @@ The marketing site lives in a separate repo.
 
 ## Status
 
-Phase 4 — production perimeter + webhooks. CSRF, rate limiting, and login
-brute-force throttling harden the app for public traffic; HMAC-signed
-webhooks are the first customer-facing integration.
+Phase 5 — compliance. Evidence PDFs are cryptographically signed and
+retained; the GDPR/CCPA data-rights endpoints (export + delete) are wired.
 
 Implemented:
 - Chi + Templ + HTMX + Tailwind monolith
@@ -30,6 +29,11 @@ Implemented:
 - In-process token-bucket rate limiting (per-IP on auth, per-account elsewhere)
 - Login brute-force throttle (lockout after repeated failures)
 - HMAC-SHA256-signed webhooks with River-backed retry, delivery log, replay
+- Detached Ed25519 signatures on evidence PDFs, with a live tamper-check
+- Evidence store abstraction (local filesystem; S3 Object Lock stubbed)
+- Retention sweeper (River periodic job) — evidence/audit 7y, login attempts 30d
+- GDPR/CCPA: JSON data export + account soft-delete → hard-delete (crypto-shred)
+- Placeholder legal pages (Terms / Privacy / DPA)
 
 ## Local development
 
@@ -72,6 +76,8 @@ internal/account         accounts, memberships, invitations
 internal/billing         Stripe customer wrapper (+ noop fallback)
 internal/ratelimit       token-bucket limiter + middleware
 internal/webhooks        signed webhook endpoints, delivery worker, dispatch
+internal/evidence        evidence store + Ed25519 signing + retention
+internal/compliance      GDPR export, account purge, retention sweeper
 internal/db              pgx pool, transaction helpers
 internal/drill           drill domain (targets, drills, steps, results)
 internal/drill/steps     River workers for each pipeline step

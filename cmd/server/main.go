@@ -20,10 +20,12 @@ import (
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/auth"
 	"github.com/preshotcome/anything/internal/billing"
+	"github.com/preshotcome/anything/internal/compliance"
 	"github.com/preshotcome/anything/internal/config"
 	"github.com/preshotcome/anything/internal/db"
 	"github.com/preshotcome/anything/internal/drill"
 	"github.com/preshotcome/anything/internal/drill/steps"
+	"github.com/preshotcome/anything/internal/evidence"
 	"github.com/preshotcome/anything/internal/ratelimit"
 	"github.com/preshotcome/anything/internal/runner"
 	"github.com/preshotcome/anything/internal/web/csrf"
@@ -71,8 +73,24 @@ func main() {
 	localRunner := runner.NewLocalRunner(cfg.DatabaseURL)
 	webhookStore := webhooks.NewStore(pool)
 
+	// Evidence: detached-signature signer + local store.
+	signer, err := evidence.NewSigner(cfg.EvidenceSigningKey)
+	if err != nil {
+		logger.Error("evidence signer", "err", err)
+		os.Exit(1)
+	}
+	if signer.Ephemeral() {
+		logger.Warn("evidence signing key not configured — using an EPHEMERAL key; " +
+			"signatures will not verify across restarts. Set EVIDENCE_SIGNING_KEY in production.")
+	}
+	evidenceService := evidence.NewService(evidence.NewLocalStore(evidenceDir), signer, pool)
+
+	loginThrottle := auth.NewLoginThrottle(pool, 5, 15*time.Minute)
+	sweeper := compliance.NewSweeper(pool, evidenceService, loginThrottle)
+	purger := compliance.NewPurger(pool, evidenceService, auditLog, compliance.DefaultGracePeriod)
+
 	workers := river.NewWorkers()
-	riverClient, err := newRiverClient(rootCtx, pool, workers)
+	riverClient, err := newRiverClient(pool, workers)
 	if err != nil {
 		logger.Error("river client", "err", err)
 		os.Exit(1)
@@ -81,14 +99,16 @@ func main() {
 	webhookDispatch := webhooks.NewDispatcher(webhookStore, riverClient)
 
 	steps.Register(workers, steps.Deps{
-		Store:       drillStore,
-		Runner:      localRunner,
-		Inserter:    riverClient,
-		Audit:       auditLog,
-		EvidenceDir: evidenceDir,
-		Webhooks:    webhookDispatch,
+		Store:    drillStore,
+		Runner:   localRunner,
+		Inserter: riverClient,
+		Audit:    auditLog,
+		Evidence: evidenceService,
+		Webhooks: webhookDispatch,
 	})
 	river.AddWorker(workers, webhooks.NewDeliverWorker(webhookStore))
+	river.AddWorker(workers, &compliance.PurgeWorker{Purger: purger})
+	river.AddWorker(workers, &compliance.RetentionWorker{Sweeper: sweeper, Logger: logger})
 
 	if err := riverClient.Start(rootCtx); err != nil {
 		logger.Error("river start", "err", err)
@@ -102,8 +122,7 @@ func main() {
 
 	orch := drill.NewOrchestrator(drillStore, riverClient, auditLog)
 
-	// Perimeter: login throttle + per-IP / per-account rate limiters.
-	loginThrottle := auth.NewLoginThrottle(pool, 5, 15*time.Minute)
+	// Perimeter: per-IP / per-account rate limiters.
 	authLimiter := ratelimit.New(20, 10)  // 20/min, burst 10 — login/signup
 	appLimiter := ratelimit.New(300, 100) // 300/min, burst 100 — authed traffic
 	authLimiter.StartSweeper(rootCtx.Done(), 5*time.Minute, 15*time.Minute)
@@ -123,6 +142,10 @@ func main() {
 		CSRF:            csrf.New(cfg.IsProduction()),
 		AuthLimiter:     authLimiter,
 		AppLimiter:      appLimiter,
+		Evidence:        evidenceService,
+		Exporter:        compliance.NewExporter(pool),
+		Purger:          purger,
+		Inserter:        riverClient,
 	})
 
 	staticDir, _ := filepath.Abs("assets/static")
@@ -155,11 +178,14 @@ func main() {
 	logger.Info("shutdown complete")
 }
 
-func newRiverClient(ctx context.Context, pool *pgxpool.Pool, workers *river.Workers) (*river.Client[pgx.Tx], error) {
+func newRiverClient(pool *pgxpool.Pool, workers *river.Workers) (*river.Client[pgx.Tx], error) {
 	return river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Queues: map[string]river.QueueConfig{
 			river.QueueDefault: {MaxWorkers: 8},
 		},
 		Workers: workers,
+		PeriodicJobs: []*river.PeriodicJob{
+			compliance.PeriodicJob(),
+		},
 	})
 }

@@ -1,0 +1,95 @@
+package templates
+
+// LegalPage wraps a legal document body in the standard layout.
+templ LegalPage(lc LayoutCtx, title string, body templ.Component) {
+	@LayoutWith(title, lc) {
+		<article class="prose-sm mx-auto max-w-2xl">
+			<h1 class="mb-1 text-2xl font-semibold tracking-tight">{ title }</h1>
+			<div class="alert-error mb-6">
+				DRAFT — placeholder text, not legal advice. The production
+				documents are drafted by counsel before the first paid customer.
+			</div>
+			@body
+		</article>
+	}
+}
+
+templ LegalTerms() {
+	<div class="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
+		<p>
+			These Terms of Service govern use of Restore Drill, a backup
+			verification service. By creating an account you agree to them.
+		</p>
+		<h2 class="text-base font-semibold">The service</h2>
+		<p>
+			Restore Drill periodically restores database dumps you register in
+			an isolated sandbox, runs the assertions you configure, and
+			produces signed evidence of the result.
+		</p>
+		<h2 class="text-base font-semibold">Your responsibilities</h2>
+		<p>
+			You are responsible for the database dumps you register and for
+			keeping your credentials secure. Restore Drill is a verification
+			tool, not a backup provider — it does not create your backups.
+		</p>
+		<h2 class="text-base font-semibold">Availability</h2>
+		<p>
+			The service is provided as-is during the current phase. Production
+			SLAs will be published before general availability.
+		</p>
+	</div>
+}
+
+templ LegalPrivacy() {
+	<div class="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
+		<p>
+			This Privacy Policy explains what data Restore Drill holds and the
+			rights you have over it.
+		</p>
+		<h2 class="text-base font-semibold">What we store</h2>
+		<p>
+			Account and user records, the database targets you register, drill
+			results and their signed evidence, an immutable audit log, and
+			webhook delivery records.
+		</p>
+		<h2 class="text-base font-semibold">Your rights</h2>
+		<p>
+			You can export everything we hold for your account as JSON from
+			Account → Export, and you can delete your account from Account →
+			Danger zone. Deletion is a soft delete followed by a permanent
+			hard delete after a 30-day grace period.
+		</p>
+		<h2 class="text-base font-semibold">Retention</h2>
+		<p>
+			Drill evidence and audit logs are retained for seven years to meet
+			auditor requirements. Transient working copies of your dumps are
+			destroyed as soon as a drill finishes.
+		</p>
+	</div>
+}
+
+templ LegalDPA() {
+	<div class="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
+		<p>
+			This Data Processing Addendum describes how Restore Drill processes
+			personal data on your behalf as a processor.
+		</p>
+		<h2 class="text-base font-semibold">Scope</h2>
+		<p>
+			Restore Drill processes the data contained in the database dumps
+			you register only to perform the verification you request. We do
+			not access that data for any other purpose.
+		</p>
+		<h2 class="text-base font-semibold">Sub-processors</h2>
+		<p>
+			A current sub-processor list will be published here before general
+			availability. Material changes will be notified in advance.
+		</p>
+		<h2 class="text-base font-semibold">Security</h2>
+		<p>
+			Drills run in isolated, ephemeral sandboxes. Evidence is signed and
+			retained under access control. See the Privacy Policy for retention
+			detail.
+		</p>
+	</div>
+}

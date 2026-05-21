@@ -5,6 +5,7 @@ import (
 
 	"github.com/preshotcome/anything/internal/auth"
 	"github.com/preshotcome/anything/internal/drill"
+	"github.com/preshotcome/anything/internal/evidence"
 )
 
 templ DrillsPage(lc LayoutCtx, drills []drill.Drill, targets []drill.Target, idemKey string) {
@@ -85,7 +86,7 @@ templ DrillsErrorPage(lc LayoutCtx, msg string) {
 	}
 }
 
-templ DrillDetail(lc LayoutCtx, d drill.Drill, t drill.Target, steps []drill.Step, ars []drill.AssertionResult) {
+templ DrillDetail(lc LayoutCtx, d drill.Drill, t drill.Target, steps []drill.Step, ars []drill.AssertionResult, verify evidence.VerifyResult) {
 	@LayoutWith("Drill", lc) {
 		<div class="mb-4 flex items-baseline justify-between">
 			<h1 class="text-2xl font-semibold tracking-tight">Drill</h1>
@@ -111,6 +112,10 @@ templ DrillDetail(lc LayoutCtx, d drill.Drill, t drill.Target, steps []drill.Ste
 			}
 		</dl>
 
+		if verify.Signed {
+			@SignaturePanel(verify)
+		}
+
 		<section
 			id="steps-pane"
 			hx-get={ "/drills/" + d.ID.String() + "/steps" }
@@ -122,6 +127,32 @@ templ DrillDetail(lc LayoutCtx, d drill.Drill, t drill.Target, steps []drill.Ste
 
 		<script src="/static/drill-poll.js" defer></script>
 	}
+}
+
+// SignaturePanel renders the live tamper-check result for a drill's evidence.
+templ SignaturePanel(v evidence.VerifyResult) {
+	<div class="card mb-6">
+		<div class="mb-2 flex items-center gap-2">
+			<h2 class="text-base font-semibold">Evidence signature</h2>
+			if v.Valid {
+				<span class="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">verified</span>
+			} else {
+				<span class="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">invalid</span>
+			}
+		</div>
+		<dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+			<dt class="text-zinc-500">Signed at</dt>
+			<dd>{ v.SignedAt.UTC().Format(time.RFC3339) }</dd>
+			<dt class="text-zinc-500">Retain until</dt>
+			<dd>{ v.RetainUntil.UTC().Format("2006-01-02") }</dd>
+			<dt class="text-zinc-500">Signing key</dt>
+			<dd class="truncate font-mono">{ v.PublicKeyID }</dd>
+			if !v.Valid {
+				<dt class="text-rose-500">Reason</dt>
+				<dd class="text-rose-600 dark:text-rose-400">{ v.Reason }</dd>
+			}
+		</dl>
+	</div>
 }
 
 templ DrillStepsPartial(d drill.Drill, steps []drill.Step, ars []drill.AssertionResult) {

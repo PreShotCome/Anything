@@ -12,7 +12,9 @@ import (
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/auth"
 	"github.com/preshotcome/anything/internal/billing"
+	"github.com/preshotcome/anything/internal/compliance"
 	"github.com/preshotcome/anything/internal/drill"
+	"github.com/preshotcome/anything/internal/evidence"
 	"github.com/preshotcome/anything/internal/ratelimit"
 	"github.com/preshotcome/anything/internal/web/csrf"
 	"github.com/preshotcome/anything/internal/web/templates"
@@ -33,6 +35,10 @@ type Handlers struct {
 	csrf            *csrf.Protector
 	authLimiter     *ratelimit.Limiter
 	appLimiter      *ratelimit.Limiter
+	evidence        *evidence.Service
+	exporter        *compliance.Exporter
+	purger          *compliance.Purger
+	inserter        drill.RiverInserter
 }
 
 type Deps struct {
@@ -49,6 +55,10 @@ type Deps struct {
 	CSRF            *csrf.Protector
 	AuthLimiter     *ratelimit.Limiter
 	AppLimiter      *ratelimit.Limiter
+	Evidence        *evidence.Service
+	Exporter        *compliance.Exporter
+	Purger          *compliance.Purger
+	Inserter        drill.RiverInserter
 }
 
 func New(d Deps) *Handlers {
@@ -66,6 +76,10 @@ func New(d Deps) *Handlers {
 		csrf:            d.CSRF,
 		authLimiter:     d.AuthLimiter,
 		appLimiter:      d.AppLimiter,
+		evidence:        d.Evidence,
+		exporter:        d.Exporter,
+		purger:          d.Purger,
+		inserter:        d.Inserter,
 	}
 }
 
@@ -127,6 +141,11 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 	r.Get("/invitations/{token}", h.invitationPage)
 	r.Post("/invitations/{token}/accept", h.invitationAccept)
 
+	// Legal pages are public.
+	r.Get("/legal/terms", h.legalTerms)
+	r.Get("/legal/privacy", h.legalPrivacy)
+	r.Get("/legal/dpa", h.legalDPA)
+
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireUser)
 		r.Use(auth.RequireAccount)
@@ -174,12 +193,15 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 			r.Post("/account/members/{user_id}", h.memberUpdate)
 			r.Post("/account/members/{user_id}/remove", h.memberRemove)
 		})
-		// Webhook management is an account-write concern.
+		// Webhook management + compliance actions are account-write
+		// concerns. The delete handler additionally requires owner.
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAction(auth.ActionAccountWrite))
 			r.Post("/account/webhooks", h.webhookCreate)
 			r.Post("/account/webhooks/{id}/delete", h.webhookDelete)
 			r.Post("/account/webhooks/{id}/deliveries/{delivery_id}/replay", h.webhookReplay)
+			r.Get("/account/export", h.accountExport)
+			r.Post("/account/delete", h.accountDelete)
 		})
 	})
 

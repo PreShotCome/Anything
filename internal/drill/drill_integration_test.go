@@ -18,6 +18,7 @@ import (
 	"github.com/preshotcome/anything/internal/auth"
 	"github.com/preshotcome/anything/internal/drill"
 	"github.com/preshotcome/anything/internal/drill/steps"
+	"github.com/preshotcome/anything/internal/evidence"
 	"github.com/preshotcome/anything/internal/runner"
 )
 
@@ -87,6 +88,12 @@ func TestDrillEndToEnd(t *testing.T) {
 	workers := river.NewWorkers()
 	auditLog := audit.New(pool)
 
+	signer, err := evidence.NewSigner("")
+	if err != nil {
+		t.Fatalf("signer: %v", err)
+	}
+	evidenceService := evidence.NewService(evidence.NewLocalStore(evidenceDir), signer, pool)
+
 	rc, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 4}},
 		Workers: workers,
@@ -96,11 +103,11 @@ func TestDrillEndToEnd(t *testing.T) {
 	}
 
 	steps.Register(workers, steps.Deps{
-		Store:       drillStore,
-		Runner:      localRunner,
-		Inserter:    rc,
-		Audit:       auditLog,
-		EvidenceDir: evidenceDir,
+		Store:    drillStore,
+		Runner:   localRunner,
+		Inserter: rc,
+		Audit:    auditLog,
+		Evidence: evidenceService,
 	})
 
 	if err := rc.Start(ctx); err != nil {

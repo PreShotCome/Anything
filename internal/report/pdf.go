@@ -1,15 +1,11 @@
-// Package report renders unsigned PDF evidence for a completed drill. Phase 2
-// produces the minimum viable report: timestamps per step, an assertions
-// table, and an overall verdict. Document signing + RFC 3161 timestamping is
-// added in Phase 5.
+// Package report renders the evidence PDF for a completed drill: timestamps
+// per step, an assertions table, and an overall verdict. The rendered bytes
+// are handed to internal/evidence, which stores and signs them.
 package report
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/go-pdf/fpdf"
@@ -85,23 +81,10 @@ func Render(out io.Writer, d Data) error {
 	pdf.Ln(6)
 	pdf.SetFont("Helvetica", "I", 8)
 	pdf.MultiCell(0, 4,
-		"Unsigned preview. Production reports are digitally signed with an "+
-			"RFC 3161 timestamp; that arrives in a later phase.", "", "L", false)
+		"This report is sealed with a detached cryptographic signature over "+
+			"its SHA-256 digest; verify it from the drill detail page.", "", "L", false)
 
 	return pdf.Output(out)
-}
-
-// RenderToFile is the disk convenience used by the report step.
-func RenderToFile(path string, d Data) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("evidence dir: %w", err)
-	}
-	f, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("evidence file: %w", err)
-	}
-	defer f.Close()
-	return Render(f, d)
 }
 
 func stepsTable(pdf *fpdf.Fpdf, steps []drill.Step) {
