@@ -15,6 +15,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"net/http"
+	"strings"
 )
 
 // FieldName is the form field (and the templ helper) the token travels in.
@@ -42,9 +43,25 @@ func Token(ctx context.Context) string {
 // plain HTTP).
 type Protector struct {
 	secure bool
+	// exempt path prefixes — inbound webhook receivers authenticate with
+	// their own token, not a CSRF cookie, so they bypass the check.
+	exempt []string
 }
 
-func New(secure bool) *Protector { return &Protector{secure: secure} }
+// New builds a Protector. exemptPrefixes lists path prefixes (e.g.
+// "/webhooks/") whose unsafe requests skip CSRF validation.
+func New(secure bool, exemptPrefixes ...string) *Protector {
+	return &Protector{secure: secure, exempt: exemptPrefixes}
+}
+
+func (p *Protector) isExempt(path string) bool {
+	for _, prefix := range p.exempt {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
 
 func (p *Protector) cookieName() string {
 	if p.secure {
@@ -65,7 +82,7 @@ func (p *Protector) Middleware(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), tokenCtxKey, token)
 		r = r.WithContext(ctx)
 
-		if isUnsafe(r.Method) {
+		if isUnsafe(r.Method) && !p.isExempt(r.URL.Path) {
 			submitted := r.PostFormValue(FieldName)
 			if submitted == "" || subtle.ConstantTimeCompare([]byte(submitted), []byte(token)) != 1 {
 				http.Error(w, "CSRF token invalid or missing", http.StatusForbidden)

@@ -10,8 +10,10 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/preshotcome/anything/internal/account"
+	"github.com/preshotcome/anything/internal/analytics"
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/auth"
+	mail "github.com/preshotcome/anything/internal/email"
 	"github.com/preshotcome/anything/internal/web/templates"
 )
 
@@ -52,19 +54,22 @@ func (h *Handlers) inviteCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	link := absoluteURL(r, "/invitations/"+rawToken)
-	// Phase 3 doesn't have real email; log the link to stdout so dev/CI can
-	// observe + so admins testing locally can copy-paste.
-	h.logger().Info("invitation issued",
-		"account_id", acct.ID,
-		"email", email,
-		"role", string(role),
-		"link", link,
-	)
+	// Send the invitation email. With LogMailer (no POSTMARK_TOKEN) this
+	// logs the rendered message — including the link — so local dev can
+	// still copy-paste it, exactly as the Phase 3 stdout log did.
+	if err := h.mailer.Send(r.Context(), mail.InvitationMessage(email, acct.Name, string(role), link)); err != nil &&
+		!errors.Is(err, mail.ErrSuppressed) {
+		h.logger().Warn("invitation email failed", "to", email, "err", err)
+	}
 
 	_ = h.audit.Record(r.Context(), audit.Event{
 		AccountID: &acct.ID, ActorID: &u.ID, Action: "account.invited",
 		TargetKind: "invitation", TargetID: inv.ID.String(),
 		Metadata: map[string]any{"email": email, "role": string(role)},
+	})
+	h.analytics.Capture(u.ID.String(), analytics.EventInvitationSent, map[string]any{
+		"account_id": acct.ID.String(),
+		"role":       string(role),
 	})
 
 	http.Redirect(w, r, "/account?invited="+inv.ID.String(), http.StatusSeeOther)

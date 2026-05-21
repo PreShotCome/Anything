@@ -20,6 +20,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/preshotcome/anything/internal/analytics"
 	"github.com/preshotcome/anything/internal/assertions"
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/drill"
@@ -44,6 +45,19 @@ type Deps struct {
 	// Metrics records drill outcomes. Optional: nil disables metric
 	// recording (e.g. in unit tests).
 	Metrics *obs.Metrics
+	// Analytics captures drill funnel events. Optional: nil disables it.
+	Analytics analytics.Analytics
+}
+
+// captureDrill records a drill funnel event, if analytics is wired.
+func (d Deps) captureDrill(event string, dr drill.Drill) {
+	if d.Analytics == nil {
+		return
+	}
+	d.Analytics.Capture(dr.AccountID.String(), event, map[string]any{
+		"drill_id":  dr.ID.String(),
+		"target_id": dr.TargetID.String(),
+	})
 }
 
 // recordDrillMetric records a terminal drill outcome, if metrics are wired.
@@ -495,6 +509,7 @@ func (w *TeardownWorker) Work(ctx context.Context, job *river.Job[drill.Teardown
 			Metadata: map[string]any{"reason": job.Args.FailureReason},
 		})
 		w.D.recordDrillMetric("failed", dr)
+		w.D.captureDrill(analytics.EventDrillFailed, dr)
 		w.D.dispatchWebhook(ctx, acct, "drill.failed", map[string]any{
 			"drill_id": drillID.String(),
 			"reason":   job.Args.FailureReason,
@@ -504,6 +519,7 @@ func (w *TeardownWorker) Work(ctx context.Context, job *river.Job[drill.Teardown
 	if dr.Status == drill.StatusFailed {
 		// Already marked by report worker for assertion failures.
 		w.D.recordDrillMetric("failed", dr)
+		w.D.captureDrill(analytics.EventDrillFailed, dr)
 		w.D.dispatchWebhook(ctx, acct, "drill.failed", map[string]any{
 			"drill_id": drillID.String(),
 			"reason":   "assertion_failed",
@@ -529,6 +545,7 @@ func (w *TeardownWorker) Work(ctx context.Context, job *river.Job[drill.Teardown
 		TargetKind: "drill", TargetID: drillID.String(),
 	})
 	w.D.recordDrillMetric("succeeded", dr)
+	w.D.captureDrill(analytics.EventDrillCompleted, dr)
 	w.D.dispatchWebhook(ctx, acct, "drill.completed", map[string]any{
 		"drill_id": drillID.String(),
 		"status":   "succeeded",

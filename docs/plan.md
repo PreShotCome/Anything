@@ -481,3 +481,51 @@ Running a real collector / Grafana / Sentry; PostHog product analytics
 
 ### When you're done
 Commit on `claude/restore-drill-phase-2-vHjzy`. Push and stop — no PR.
+
+---
+
+## Layer 9 — Growth
+
+### Goal
+Wire the growth instrumentation into the app: transactional email, product
+analytics, feature flags, the referral touch. The Astro marketing site and
+its SEO (OG cards, JSON-LD, MDX) is Phase 7 in a separate repo and stays
+out of scope; the app gets a correct robots.txt.
+
+### Locked decisions
+- **Email:** `internal/email` — `Mailer` over a `Sender` seam;
+  `PostmarkMailer` (gated on `POSTMARK_TOKEN`) + `LogMailer` fallback.
+  Replaces the Phase 3 stdout invite-link log with a real invitation email;
+  adds a welcome email at signup. `email_suppressions` table + a Postmark
+  bounce/complaint inbound webhook auto-suppress bad addresses; the mailer
+  skips suppressed recipients (`ErrSuppressed`).
+- **Analytics:** `internal/analytics` — `PostHogAnalytics` (gated on
+  `POSTHOG_API_KEY`) + `NoopAnalytics`. Best-effort async capture of
+  user.signed_up, invitation.sent, drill.completed, drill.failed.
+- **Feature flags:** `internal/flags` — `StaticFlags` (env-driven,
+  `FEATURE_<NAME>`) behind a `Flags` interface seam. `self_serve_signup`
+  gates the signup route (off → "request access" / sales-led page).
+- **Referral:** the signed evidence PDF footer carries "Verified by
+  Restore Drill — restoredrill.io".
+- **robots.txt:** the app disallows indexing (marketing is indexed
+  separately).
+
+### Data model
+`email_suppressions`.
+
+### Deliverables
+1. `internal/email`, `internal/analytics`, `internal/flags`.
+2. Postmark bounce webhook (`POST /webhooks/postmark/{token}`, CSRF-exempt,
+   token-authenticated); `/robots.txt`.
+3. Signup gated on the flag; welcome + invitation emails; analytics on
+   signup / invite / drill terminal events; PDF referral footer.
+4. Tests: flag default + env override, analytics noop fallback, mailer
+   suppression skip + idempotent Suppress, message builders.
+
+### Out of scope
+The Astro marketing site + SEO/OG/JSON-LD (Phase 7); A/B experiment
+analysis; weekly deliverability report; the email-verification flow
+(layer 5); a PostHog flag-evaluation backend (the `Flags` seam allows it).
+
+### When you're done
+Commit on `claude/restore-drill-phase-2-vHjzy`. Push and stop — no PR.

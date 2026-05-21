@@ -9,9 +9,9 @@ The marketing site lives in a separate repo.
 
 ## Status
 
-Phase 6 — observability. Structured request logs, Prometheus metrics,
-OpenTelemetry tracing, error reporting, and readiness probes, plus the
-incident runbook and dashboard/alert IaC.
+Layer 9 — growth. Transactional email, product analytics, feature flags,
+and the referral touch are wired into the app. (The Astro marketing site
+and its SEO live in a separate repo — Phase 7.)
 
 Implemented:
 - Chi + Templ + HTMX + Tailwind monolith
@@ -40,6 +40,11 @@ Implemented:
 - OpenTelemetry tracing — HTTP + drill-step spans (OTLP / stdout / noop)
 - Error reporting via a Sentry seam (noop fallback); `/readyz` probe
 - Incident runbook + Grafana dashboard + Prometheus alert rules
+- Transactional email (Postmark seam; logs locally) — invitation + welcome
+- Email suppression list fed by a Postmark bounce/complaint webhook
+- Product analytics (PostHog seam) on signup / invite / drill events
+- Feature flags (env-driven) — `self_serve_signup` gates the signup route
+- `robots.txt`; "Verified by Restore Drill" referral footer on evidence PDFs
 
 ## Local development
 
@@ -85,6 +90,9 @@ internal/webhooks        signed webhook endpoints, delivery worker, dispatch
 internal/evidence        evidence store + Ed25519 signing + retention
 internal/compliance      GDPR export, account purge, retention sweeper
 internal/obs             logging, metrics, tracing, error reporting
+internal/email           transactional email + suppression list
+internal/analytics       product-event capture (PostHog seam)
+internal/flags           feature-flag evaluation
 internal/db              pgx pool, transaction helpers
 internal/drill           drill domain (targets, drills, steps, results)
 internal/drill/steps     River workers for each pipeline step

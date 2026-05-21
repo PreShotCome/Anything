@@ -84,6 +84,10 @@ func Render(out io.Writer, d Data) error {
 		"This report is sealed with a detached cryptographic signature over "+
 			"its SHA-256 digest; verify it from the drill detail page.", "", "L", false)
 
+	pdf.Ln(2)
+	pdf.SetFont("Helvetica", "B", 8)
+	pdf.CellFormat(0, 4, "Verified by Restore Drill — restoredrill.io", "", 1, "C", false, 0, "")
+
 	return pdf.Output(out)
 }
 

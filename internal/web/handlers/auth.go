@@ -10,8 +10,11 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/preshotcome/anything/internal/account"
+	"github.com/preshotcome/anything/internal/analytics"
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/auth"
+	mail "github.com/preshotcome/anything/internal/email"
+	"github.com/preshotcome/anything/internal/flags"
 	"github.com/preshotcome/anything/internal/web/templates"
 )
 
@@ -113,10 +116,20 @@ func (h *Handlers) signupPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
+	// Self-serve signup is feature-flagged: off → sales-led GA.
+	if !h.flags.Enabled(r.Context(), flags.SelfServeSignup, clientIPKey(r)) {
+		render(w, r, templates.SignupClosed())
+		return
+	}
 	render(w, r, templates.SignupWithNext("", "", safeNext(r.URL.Query().Get("next"))))
 }
 
 func (h *Handlers) signupSubmit(w http.ResponseWriter, r *http.Request) {
+	if !h.flags.Enabled(r.Context(), flags.SelfServeSignup, clientIPKey(r)) {
+		w.WriteHeader(http.StatusForbidden)
+		render(w, r, templates.SignupClosed())
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
@@ -181,6 +194,17 @@ func (h *Handlers) signupSubmit(w http.ResponseWriter, r *http.Request) {
 		AccountID: &acct.ID, ActorID: &id, Action: "user.signed_up",
 		IP: audit.ClientIP(r), UserAgent: r.UserAgent(),
 	})
+
+	// Growth: capture the funnel event and send the welcome email. Both are
+	// best-effort — neither blocks the redirect into the app.
+	h.analytics.Capture(id.String(), analytics.EventSignedUp, map[string]any{
+		"account_id": acct.ID.String(),
+	})
+	if err := h.mailer.Send(r.Context(), mail.WelcomeMessage(email, acct.Name)); err != nil &&
+		!errors.Is(err, mail.ErrSuppressed) {
+		h.logger().Warn("welcome email failed", "to", email, "err", err)
+	}
+
 	http.Redirect(w, r, redirectTarget(next), http.StatusSeeOther)
 }
 

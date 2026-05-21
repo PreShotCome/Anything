@@ -10,12 +10,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/preshotcome/anything/internal/account"
+	"github.com/preshotcome/anything/internal/analytics"
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/auth"
 	"github.com/preshotcome/anything/internal/billing"
 	"github.com/preshotcome/anything/internal/compliance"
 	"github.com/preshotcome/anything/internal/drill"
+	"github.com/preshotcome/anything/internal/email"
 	"github.com/preshotcome/anything/internal/evidence"
+	"github.com/preshotcome/anything/internal/flags"
 	"github.com/preshotcome/anything/internal/obs"
 	"github.com/preshotcome/anything/internal/ratelimit"
 	"github.com/preshotcome/anything/internal/web/csrf"
@@ -42,6 +45,11 @@ type Handlers struct {
 	purger          *compliance.Purger
 	inserter        drill.RiverInserter
 	obs             *obs.Provider
+
+	mailer               *email.Mailer
+	analytics            analytics.Analytics
+	flags                flags.Flags
+	postmarkWebhookToken string
 }
 
 type Deps struct {
@@ -63,6 +71,11 @@ type Deps struct {
 	Purger          *compliance.Purger
 	Inserter        drill.RiverInserter
 	Obs             *obs.Provider
+
+	Mailer               *email.Mailer
+	Analytics            analytics.Analytics
+	Flags                flags.Flags
+	PostmarkWebhookToken string
 }
 
 func New(d Deps) *Handlers {
@@ -85,6 +98,11 @@ func New(d Deps) *Handlers {
 		purger:          d.Purger,
 		inserter:        d.Inserter,
 		obs:             d.Obs,
+
+		mailer:               d.Mailer,
+		analytics:            d.Analytics,
+		flags:                d.Flags,
+		postmarkWebhookToken: d.PostmarkWebhookToken,
 	}
 }
 
@@ -133,6 +151,11 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 		"database": h.pool.Ping,
 	}))
 	r.Handle("/metrics", h.obs.Metrics.Handler())
+	r.Get("/robots.txt", h.robotsTxt)
+
+	// Inbound Postmark bounce/complaint webhook — authenticated by the
+	// token path segment, CSRF-exempt (see csrf.New in main).
+	r.Post("/webhooks/postmark/{token}", h.postmarkBounce)
 
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(staticFS)))
 

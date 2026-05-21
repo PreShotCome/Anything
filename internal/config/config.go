@@ -19,6 +19,12 @@ type Config struct {
 	StripeSecretKey    string
 	EvidenceSigningKey string
 	SentryDSN          string
+
+	PostmarkToken        string
+	PostmarkWebhookToken string
+	EmailFrom            string
+	PostHogAPIKey        string
+	PostHogHost          string
 }
 
 func Load() (Config, error) {
@@ -32,6 +38,12 @@ func Load() (Config, error) {
 		StripeSecretKey:    os.Getenv("STRIPE_SECRET_KEY"),
 		EvidenceSigningKey: os.Getenv("EVIDENCE_SIGNING_KEY"),
 		SentryDSN:          os.Getenv("SENTRY_DSN"),
+
+		PostmarkToken:        os.Getenv("POSTMARK_TOKEN"),
+		PostmarkWebhookToken: os.Getenv("POSTMARK_WEBHOOK_TOKEN"),
+		EmailFrom:            getenv("EMAIL_FROM", "notifications@restoredrill.io"),
+		PostHogAPIKey:        os.Getenv("POSTHOG_API_KEY"),
+		PostHogHost:          os.Getenv("POSTHOG_HOST"),
 	}
 
 	if c.DatabaseURL == "" {

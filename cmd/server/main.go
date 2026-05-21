@@ -17,6 +17,7 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
 	"github.com/preshotcome/anything/internal/account"
+	"github.com/preshotcome/anything/internal/analytics"
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/auth"
 	"github.com/preshotcome/anything/internal/billing"
@@ -25,7 +26,9 @@ import (
 	"github.com/preshotcome/anything/internal/db"
 	"github.com/preshotcome/anything/internal/drill"
 	"github.com/preshotcome/anything/internal/drill/steps"
+	"github.com/preshotcome/anything/internal/email"
 	"github.com/preshotcome/anything/internal/evidence"
+	"github.com/preshotcome/anything/internal/flags"
 	"github.com/preshotcome/anything/internal/obs"
 	"github.com/preshotcome/anything/internal/ratelimit"
 	"github.com/preshotcome/anything/internal/runner"
@@ -88,6 +91,17 @@ func main() {
 	localRunner := runner.NewLocalRunner(cfg.DatabaseURL)
 	webhookStore := webhooks.NewStore(pool)
 
+	// Growth: transactional email, product analytics, feature flags.
+	mailer := email.NewMailer(pool,
+		email.NewSender(cfg.PostmarkToken, cfg.EmailFrom, logger), logger)
+	if mailer.ProviderEnabled() {
+		logger.Info("email enabled (postmark)")
+	} else {
+		logger.Info("email disabled (no POSTMARK_TOKEN) — using log mailer")
+	}
+	analyticsClient := analytics.New(cfg.PostHogAPIKey, cfg.PostHogHost, logger)
+	featureFlags := flags.New()
+
 	// Evidence: detached-signature signer + local store.
 	signer, err := evidence.NewSigner(cfg.EvidenceSigningKey)
 	if err != nil {
@@ -114,13 +128,14 @@ func main() {
 	webhookDispatch := webhooks.NewDispatcher(webhookStore, riverClient)
 
 	steps.Register(workers, steps.Deps{
-		Store:    drillStore,
-		Runner:   localRunner,
-		Inserter: riverClient,
-		Audit:    auditLog,
-		Evidence: evidenceService,
-		Webhooks: webhookDispatch,
-		Metrics:  observ.Metrics,
+		Store:     drillStore,
+		Runner:    localRunner,
+		Inserter:  riverClient,
+		Audit:     auditLog,
+		Evidence:  evidenceService,
+		Webhooks:  webhookDispatch,
+		Metrics:   observ.Metrics,
+		Analytics: analyticsClient,
 	})
 	deliverWorker := webhooks.NewDeliverWorker(webhookStore)
 	deliverWorker.Metrics = observ.Metrics
@@ -157,7 +172,7 @@ func main() {
 		Throttle:        loginThrottle,
 		Webhooks:        webhookStore,
 		WebhookDispatch: webhookDispatch,
-		CSRF:            csrf.New(cfg.IsProduction()),
+		CSRF:            csrf.New(cfg.IsProduction(), "/webhooks/"),
 		AuthLimiter:     authLimiter,
 		AppLimiter:      appLimiter,
 		Evidence:        evidenceService,
@@ -165,6 +180,11 @@ func main() {
 		Purger:          purger,
 		Inserter:        riverClient,
 		Obs:             observ,
+
+		Mailer:               mailer,
+		Analytics:            analyticsClient,
+		Flags:                featureFlags,
+		PostmarkWebhookToken: cfg.PostmarkWebhookToken,
 	})
 
 	// Sample River queue depth into the metrics gauge every 15s.
