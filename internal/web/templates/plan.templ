@@ -1,0 +1,32 @@
+package templates
+
+import "strconv"
+
+// PlanLimit is the page shown when a create action is blocked by the
+// account's subscription tier. `resource` is the plural noun ("databases"),
+// `plan` the current tier name, `limit` the cap that was hit.
+templ PlanLimit(lc LayoutCtx, resource, plan string, limit int) {
+	@LayoutWith("Plan limit reached", lc) {
+		<div class="card max-w-xl space-y-4">
+			<h1 class="text-2xl font-semibold tracking-tight">Plan limit reached</h1>
+			<p class="text-zinc-600 dark:text-zinc-400">
+				Your <span class="font-medium">{ plan }</span> plan includes
+				{ planLimitCount(limit, resource) }. To add more, upgrade your plan.
+			</p>
+			<div class="flex gap-3">
+				<a href="/account" class="btn-primary">Manage plan</a>
+				<a href="/databases" class="btn-ghost">Back</a>
+			</div>
+		</div>
+	}
+}
+
+// planLimitCount renders "1 database" / "5 databases" — the cap plus the
+// correctly singular/plural resource noun.
+func planLimitCount(limit int, resource string) string {
+	noun := resource
+	if limit == 1 && len(noun) > 1 && noun[len(noun)-1] == 's' {
+		noun = noun[:len(noun)-1]
+	}
+	return strconv.Itoa(limit) + " " + noun
+}

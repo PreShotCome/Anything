@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/preshotcome/anything/internal/account"
 	"github.com/preshotcome/anything/internal/assertions"
 	"github.com/preshotcome/anything/internal/auth"
 	"github.com/preshotcome/anything/internal/drill"
@@ -156,6 +157,14 @@ func (h *Handlers) v1CreateDatabase(w http.ResponseWriter, r *http.Request) {
 	cleanPath, err := h.resolveSourcePath(req.SourceURI)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, "validation", err.Error())
+		return
+	}
+
+	existing, _ := h.drills.ListTargets(r.Context(), acct.ID)
+	if limit := account.LimitsFor(acct.Plan); account.AtLimit(len(existing), limit.Databases) {
+		writeAPIError(w, http.StatusForbidden, "plan_limit",
+			fmt.Sprintf("the %s plan is limited to %d databases — upgrade to add more",
+				acct.Plan, limit.Databases))
 		return
 	}
 

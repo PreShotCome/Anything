@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/preshotcome/anything/internal/account"
 	"github.com/preshotcome/anything/internal/assertions"
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/auth"
@@ -76,6 +77,13 @@ func (h *Handlers) resolveSourcePath(p string) (string, error) {
 func (h *Handlers) targetCreate(w http.ResponseWriter, r *http.Request) {
 	lc := h.layoutCtx(r)
 	u, acct := lc.User, lc.Account
+
+	existing, _ := h.drills.ListTargets(r.Context(), acct.ID)
+	if h.enforceLimit(w, r, lc, "databases", len(existing),
+		account.LimitsFor(acct.Plan).Databases) {
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
