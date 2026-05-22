@@ -13,14 +13,14 @@ type Limits struct {
 	Webhooks  int
 }
 
-// LimitsFor returns the resource caps for a plan tier. Pro is uncapped; an
-// unknown plan is treated as trial — the most restrictive — so a bad value
-// can never widen access.
+// LimitsFor returns the resource caps for a plan tier. Pro is uncapped; the
+// trial has full Starter-level access for its window; an unknown plan falls
+// to the most restrictive caps so a bad value can never widen access.
 func LimitsFor(p Plan) Limits {
 	switch p {
 	case PlanPro:
 		return Limits{} // all Unlimited
-	case PlanStarter:
+	case PlanStarter, PlanTrial:
 		return Limits{Databases: 10, Seats: 10, APIKeys: 5, Webhooks: 5}
 	default:
 		return Limits{Databases: 1, Seats: 2, APIKeys: 1, Webhooks: 1}
@@ -28,13 +28,13 @@ func LimitsFor(p Plan) Limits {
 }
 
 // AllowedCadences returns the drill cadences a plan may select, from least to
-// most frequent. Drill frequency is the primary axis the plan tiers differ
-// on: Trial drills weekly, Starter daily, Pro hourly.
+// most frequent. A trial has Starter-level access (up to daily) for its
+// window; Pro adds hourly.
 func AllowedCadences(p Plan) []string {
 	switch p {
 	case PlanPro:
 		return []string{"off", "weekly", "daily", "hourly"}
-	case PlanStarter:
+	case PlanStarter, PlanTrial:
 		return []string{"off", "weekly", "daily"}
 	default:
 		return []string{"off", "weekly"}

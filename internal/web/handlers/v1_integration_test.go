@@ -337,7 +337,7 @@ func TestV1DatabasePlanLimit(t *testing.T) {
 	defer pool.Close()
 	srv, key, accountID, _, _ := v1TestServer(t, pool)
 
-	// v1TestServer seeds Pro; drop to trial — one database allowed.
+	// v1TestServer seeds Pro; drop to trial — capped at ten databases.
 	if _, err := pool.Exec(context.Background(),
 		`UPDATE accounts SET plan='trial' WHERE id=$1`, accountID); err != nil {
 		t.Fatalf("set plan: %v", err)
@@ -346,14 +346,16 @@ func TestV1DatabasePlanLimit(t *testing.T) {
 	fixture := mustAbsTestdata(t)
 	body := `{"name":"db","source_uri":"` + fixture + `"}`
 
-	// First database — within the trial cap.
-	if resp, _ := v1Do(t, "POST", srv.URL+"/databases", key, uuid.NewString(), body); resp.StatusCode != 201 {
-		t.Fatalf("first create: got %d, want 201", resp.StatusCode)
+	// Fill the trial's ten-database cap.
+	for i := 0; i < 10; i++ {
+		if resp, _ := v1Do(t, "POST", srv.URL+"/databases", key, uuid.NewString(), body); resp.StatusCode != 201 {
+			t.Fatalf("create %d: got %d, want 201", i+1, resp.StatusCode)
+		}
 	}
-	// Second — over the cap.
+	// The eleventh is over the cap.
 	resp, env := v1Do(t, "POST", srv.URL+"/databases", key, uuid.NewString(), body)
 	if resp.StatusCode != 403 {
-		t.Fatalf("second create: got %d, want 403", resp.StatusCode)
+		t.Fatalf("over-cap create: got %d, want 403", resp.StatusCode)
 	}
 	errs, _ := env["errors"].([]any)
 	if len(errs) == 0 {

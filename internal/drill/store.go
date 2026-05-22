@@ -247,13 +247,17 @@ func (s *Store) SetTargetSchedule(ctx context.Context, accountID, targetID uuid.
 // the scheduler worker.
 func (s *Store) DueTargets(ctx context.Context) ([]Target, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, account_id, created_by_user_id, name, source_kind, source_uri, created_at,
-		       drill_cadence, next_drill_at
-		  FROM database_targets
-		 WHERE deleted_at IS NULL
-		   AND drill_cadence <> 'off'
-		   AND next_drill_at IS NOT NULL
-		   AND next_drill_at <= now()
+		SELECT t.id, t.account_id, t.created_by_user_id, t.name, t.source_kind, t.source_uri,
+		       t.created_at, t.drill_cadence, t.next_drill_at
+		  FROM database_targets t
+		  JOIN accounts a ON a.id = t.account_id
+		 WHERE t.deleted_at IS NULL
+		   AND a.deleted_at IS NULL
+		   AND t.drill_cadence <> 'off'
+		   AND t.next_drill_at IS NOT NULL
+		   AND t.next_drill_at <= now()
+		   -- A lapsed trial is read-only: the scheduler stops drilling it.
+		   AND NOT (a.plan = 'trial' AND a.trial_ends_at IS NOT NULL AND a.trial_ends_at < now())
 	`)
 	if err != nil {
 		return nil, err

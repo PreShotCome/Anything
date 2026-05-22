@@ -53,10 +53,15 @@ templ pricingCard(lc LayoutCtx, plan, name, price, period string, stripeEnabled 
 			</p>
 		</div>
 		<div class="rounded-lg bg-brand-50 px-3 py-2 text-center dark:bg-brand-900/40">
-			<p class="text-[11px] font-medium uppercase tracking-wide text-brand-600 dark:text-brand-300">Drill frequency</p>
-			<p class="font-semibold text-brand-800 dark:text-brand-100">
-				{ cadenceLabel(account.TopCadence(account.Plan(plan))) } drills
-			</p>
+			if plan == "trial" {
+				<p class="text-[11px] font-medium uppercase tracking-wide text-brand-600 dark:text-brand-300">Free for 14 days</p>
+				<p class="font-semibold text-brand-800 dark:text-brand-100">Daily drills, full access</p>
+			} else {
+				<p class="text-[11px] font-medium uppercase tracking-wide text-brand-600 dark:text-brand-300">Drill frequency</p>
+				<p class="font-semibold text-brand-800 dark:text-brand-100">
+					{ cadenceLabel(account.TopCadence(account.Plan(plan))) } drills
+				</p>
+			}
 		</div>
 		<ul class="flex-1 space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
 			@pricingFeature(limitText(limits.Databases, "database"))
@@ -84,7 +89,7 @@ templ pricingFeature(text string) {
 templ pricingCTA(lc LayoutCtx, plan string, stripeEnabled bool) {
 	if lc.User == nil {
 		if plan == "trial" {
-			<a href="/signup" class="btn-primary w-full">Sign up free</a>
+			<a href="/signup" class="btn-primary w-full">Start free trial</a>
 		} else {
 			<a href="/signup?next=/pricing" class="btn-primary w-full">Get started</a>
 		}

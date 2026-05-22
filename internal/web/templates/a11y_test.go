@@ -21,6 +21,7 @@ func TestAccessibility(t *testing.T) {
 		"signup-closed": SignupClosed(),
 		"pricing":       Pricing(LayoutCtx{}, "$99", "$399", true),
 		"how-it-works":  HowItWorks(LayoutCtx{}),
+		"trial-ended":   TrialEnded(LayoutCtx{}),
 		"legal-cookies": LegalPage(LayoutCtx{}, "Cookie Policy", LegalCookies()),
 		"legal-subproc": LegalPage(LayoutCtx{}, "Sub-processors", LegalSubprocessors()),
 		"help":          HelpPage(LayoutCtx{}),

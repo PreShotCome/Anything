@@ -61,6 +61,9 @@ type Account struct {
 	StripeCustomerID *string
 	Plan             Plan
 	CreatedAt        time.Time
+	// TrialEndsAt is when a trial-plan account's full-access window closes.
+	// Nil on paid plans (and on trial accounts predating the trial window).
+	TrialEndsAt *time.Time
 }
 
 type Membership struct {
@@ -117,10 +120,11 @@ func (s *Store) CreatePersonalAccount(ctx context.Context, userID uuid.UUID, ema
 
 	var acct Account
 	err = tx.QueryRow(ctx, `
-		INSERT INTO accounts (name, slug)
-		VALUES ($1, $2)
-		RETURNING id, name, slug, stripe_customer_id, plan, created_at
-	`, name, slug).Scan(&acct.ID, &acct.Name, &acct.Slug, &acct.StripeCustomerID, &acct.Plan, &acct.CreatedAt)
+		INSERT INTO accounts (name, slug, trial_ends_at)
+		VALUES ($1, $2, now() + interval '14 days')
+		RETURNING id, name, slug, stripe_customer_id, plan, created_at, trial_ends_at
+	`, name, slug).Scan(&acct.ID, &acct.Name, &acct.Slug, &acct.StripeCustomerID, &acct.Plan,
+		&acct.CreatedAt, &acct.TrialEndsAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return Account{}, ErrSlugUnavailable
@@ -145,9 +149,9 @@ func (s *Store) CreatePersonalAccount(ctx context.Context, userID uuid.UUID, ema
 func (s *Store) GetAccount(ctx context.Context, accountID uuid.UUID) (Account, error) {
 	var a Account
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, slug, stripe_customer_id, plan, created_at
+		SELECT id, name, slug, stripe_customer_id, plan, created_at, trial_ends_at
 		  FROM accounts WHERE id = $1 AND deleted_at IS NULL
-	`, accountID).Scan(&a.ID, &a.Name, &a.Slug, &a.StripeCustomerID, &a.Plan, &a.CreatedAt)
+	`, accountID).Scan(&a.ID, &a.Name, &a.Slug, &a.StripeCustomerID, &a.Plan, &a.CreatedAt, &a.TrialEndsAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Account{}, ErrNotFound
 	}

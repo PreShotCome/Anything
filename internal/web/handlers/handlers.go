@@ -165,6 +165,20 @@ func (h *Handlers) layoutCtx(r *http.Request) templates.LayoutCtx {
 	return lc
 }
 
+// requireUnlapsedTrial blocks resource-write actions for a trial account
+// whose 14-day window has closed. The account stays fully readable — it
+// just has to subscribe before it can create or run anything again.
+func (h *Handlers) requireUnlapsedTrial(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if acct, ok := auth.CurrentAccountFromContext(r.Context()); ok && account.TrialLapsed(*acct) {
+			w.WriteHeader(http.StatusPaymentRequired)
+			render(w, r, templates.TrialEnded(h.layoutCtx(r)))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -333,6 +347,7 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 		// Writes (RBAC-gated)
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAction(auth.ActionTargetWrite))
+			r.Use(h.requireUnlapsedTrial)
 			r.Get("/databases/new", h.targetNewPage)
 			r.Post("/databases", h.targetCreate)
 			r.Post("/databases/{id}/assertions", h.assertionCreate)
@@ -341,6 +356,7 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAction(auth.ActionDrillWrite))
+			r.Use(h.requireUnlapsedTrial)
 			r.Post("/drills", h.drillCreate)
 		})
 		r.Group(func(r chi.Router) {

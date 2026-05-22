@@ -1,6 +1,8 @@
 package templates
 
 import (
+	"strconv"
+
 	"github.com/preshotcome/anything/internal/account"
 	"github.com/preshotcome/anything/internal/auth"
 )
@@ -83,6 +85,19 @@ templ LayoutWith(title string, lc LayoutCtx) {
 						<button type="submit" class="font-medium underline">Resend link</button>
 					</form>
 				</div>
+			}
+			if lc.Account != nil && lc.Account.Plan == account.PlanTrial {
+				if account.TrialLapsed(*lc.Account) {
+					<div class="bg-rose-100 px-4 py-2 text-center text-sm text-rose-900 dark:bg-rose-900/40 dark:text-rose-200">
+						<span>Your free trial has ended.</span>
+						<a href="/pricing" class="ml-1 font-medium underline">Choose a plan</a>
+					</div>
+				} else {
+					<div class="bg-brand-100 px-4 py-2 text-center text-sm text-brand-900 dark:bg-brand-900/40 dark:text-brand-100">
+						<span>{ trialBannerText(lc.Account) }</span>
+						<a href="/pricing" class="ml-1 font-medium underline">See plans</a>
+					</div>
+				}
 			}
 			<header class="border-b border-zinc-200 dark:border-zinc-800">
 				<div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
@@ -170,4 +185,12 @@ templ LayoutWith(title string, lc LayoutCtx) {
 			</footer>
 		</body>
 	</html>
+}
+
+// trialBannerText is the days-left message shown in the trial banner.
+func trialBannerText(a *account.Account) string {
+	if account.TrialDaysLeft(*a) == 1 {
+		return "1 day left in your free trial."
+	}
+	return strconv.Itoa(account.TrialDaysLeft(*a)) + " days left in your free trial."
 }
