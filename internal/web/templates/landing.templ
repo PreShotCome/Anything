@@ -14,7 +14,7 @@ templ Landing(lc LayoutCtx) {
 					Know your backups actually restore.
 				</h1>
 				<p class="mx-auto mt-4 max-w-xl text-lg text-zinc-600 dark:text-zinc-400">
-					Restore Drill restores your database dumps in an isolated
+					Soteria restores your database dumps in an isolated
 					sandbox, runs the checks you define, and hands you signed,
 					auditor-grade evidence — on a schedule, automatically.
 				</p>
@@ -33,7 +33,7 @@ templ Landing(lc LayoutCtx) {
 					Most teams find out a backup is broken in the middle of an
 					outage — wrong format, missing extension, a silent
 					truncation. A green backup job proves a file was written,
-					not that it restores. Restore Drill closes that gap by
+					not that it restores. Soteria closes that gap by
 					actually performing the restore, before you need it.
 				</p>
 			</section>
@@ -41,7 +41,7 @@ templ Landing(lc LayoutCtx) {
 			<section>
 				<h2 class="mb-8 text-center text-2xl font-semibold tracking-tight">How it works</h2>
 				<div class="grid gap-6 sm:grid-cols-3">
-					@howCard("1", "Connect a database", "Point Restore Drill at the dump your existing backup job already produces. We never create or touch your production database.")
+					@howCard("1", "Connect a database", "Point Soteria at the dump your existing backup job already produces. We never create or touch your production database.")
 					@howCard("2", "We run a drill", "On your schedule, we provision an isolated sandbox, restore the dump, and run your assertions — row counts, required tables, no-null checks, and more.")
 					@howCard("3", "Get signed evidence", "Each drill produces a signed PDF report and an immutable audit entry — the proof auditors and customers ask for.")
 				</div>
@@ -55,7 +55,7 @@ templ Landing(lc LayoutCtx) {
 					@featureCard("A real assertion suite", "Go beyond \"it restored\": assert row counts, table and column existence, and non-null constraints on the restored data.")
 					@featureCard("Immutable audit log", "Every drill, download, and account change is recorded — the trail SOC 2 and HIPAA reviewers expect.")
 					@featureCard("API and webhooks", "A versioned JSON API and signed webhooks put drill results straight into your own tooling and alerts.")
-					@featureCard("No production access", "Restore Drill verifies the dumps you already have. It needs no connection to your live database.")
+					@featureCard("No production access", "Soteria verifies the dumps you already have. It needs no connection to your live database.")
 				</div>
 			</section>
 			<!-- Final CTA -->
