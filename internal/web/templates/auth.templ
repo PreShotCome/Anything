@@ -1,10 +1,10 @@
 package templates
 
 templ Login(errMsg string, prefillEmail string) {
-	@LoginWithNext(errMsg, prefillEmail, "")
+	@LoginWithNext(errMsg, prefillEmail, "", nil)
 }
 
-templ LoginWithNext(errMsg string, prefillEmail string, next string) {
+templ LoginWithNext(errMsg string, prefillEmail string, next string, oauthProviders []string) {
 	@Layout("Sign in", nil) {
 		<div class="mx-auto max-w-sm">
 			<div class="card">
@@ -28,6 +28,18 @@ templ LoginWithNext(errMsg string, prefillEmail string, next string) {
 					</div>
 					<button type="submit" class="btn-primary w-full">Sign in</button>
 				</form>
+				if len(oauthProviders) > 0 {
+					<div class="my-3 flex items-center gap-2 text-xs text-zinc-400">
+						<span class="h-px flex-1 bg-zinc-200 dark:bg-zinc-800"></span>or<span class="h-px flex-1 bg-zinc-200 dark:bg-zinc-800"></span>
+					</div>
+					<div class="space-y-2">
+						for _, p := range oauthProviders {
+							<a href={ templ.SafeURL("/auth/" + p + "/start") } class="btn-ghost flex w-full justify-center capitalize">
+								Continue with { p }
+							</a>
+						}
+					</div>
+				}
 				<p class="mt-3 text-center text-sm">
 					<a href="/login/magic" class="underline text-zinc-600 dark:text-zinc-400">Email me a sign-in link instead</a>
 				</p>

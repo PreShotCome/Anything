@@ -38,7 +38,7 @@ func (h *Handlers) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login/mfa", http.StatusSeeOther)
 		return
 	}
-	render(w, r, templates.LoginWithNext("", "", safeNext(r.URL.Query().Get("next"))))
+	render(w, r, templates.LoginWithNext("", "", safeNext(r.URL.Query().Get("next")), h.oauth.Names()))
 }
 
 func (h *Handlers) loginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +52,7 @@ func (h *Handlers) loginSubmit(w http.ResponseWriter, r *http.Request) {
 
 	if email == "" || password == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		render(w, r, templates.LoginWithNext("Enter an email and password.", email, next))
+		render(w, r, templates.LoginWithNext("Enter an email and password.", email, next, h.oauth.Names()))
 		return
 	}
 
@@ -64,7 +64,7 @@ func (h *Handlers) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		render(w, r, templates.LoginWithNext(
 			"Too many failed attempts. Try again in about "+strconv.Itoa(mins)+" minute(s).",
-			email, next))
+			email, next, h.oauth.Names()))
 		return
 	}
 
@@ -82,7 +82,7 @@ func (h *Handlers) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		_ = auth.VerifyPassword(password, dummyHash)
 		_ = h.throttle.Record(r.Context(), email, clientIP, false)
 		w.WriteHeader(http.StatusUnauthorized)
-		render(w, r, templates.LoginWithNext("Invalid email or password.", email, next))
+		render(w, r, templates.LoginWithNext("Invalid email or password.", email, next, h.oauth.Names()))
 		return
 	}
 
@@ -95,7 +95,7 @@ func (h *Handlers) loginSubmit(w http.ResponseWriter, r *http.Request) {
 			UserAgent: r.UserAgent(),
 		})
 		w.WriteHeader(http.StatusUnauthorized)
-		render(w, r, templates.LoginWithNext("Invalid email or password.", email, next))
+		render(w, r, templates.LoginWithNext("Invalid email or password.", email, next, h.oauth.Names()))
 		return
 	}
 

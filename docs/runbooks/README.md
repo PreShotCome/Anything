@@ -14,7 +14,7 @@ Each service is independent — activate them in any order.
 | Stripe | Billing / subscriptions | ✅ complete | [stripe.md](stripe.md) |
 | Fly Machines | Per-drill cloud sandbox | ⬜ pending | — |
 | S3 / R2 Object Lock | Evidence storage | ⬜ pending | — |
-| Google + GitHub OAuth | Social login | ⬜ pending | — |
+| Google + GitHub OAuth | Social login | ✅ complete | [oauth.md](oauth.md) |
 | PostHog | Analytics + feature flags | ✅ complete | [posthog.md](posthog.md) |
 | OpenTelemetry / Grafana | Traces, metrics, logs | ⬜ pending | — |
 | Sentry | Error tracking | ⬜ pending | — |
