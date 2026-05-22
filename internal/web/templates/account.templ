@@ -24,17 +24,42 @@ templ AccountSettings(lc LayoutCtx, members []account.MembershipWithUser, pendin
 						{ string(lc.Account.Plan) }
 					</span>
 				</dd>
-				<dt class="font-medium">Billing</dt>
-				<dd class="text-xs">
-					if !stripeEnabled {
-						<span class="text-zinc-500">Stripe not configured</span>
-					} else if lc.Account.StripeCustomerID != nil {
-						<span class="font-mono">{ *lc.Account.StripeCustomerID }</span>
-					} else {
-						<span class="text-zinc-500">No Stripe customer yet</span>
-					}
-				</dd>
 			</dl>
+		</section>
+
+		<section class="mb-8">
+			<h2 class="mb-3 text-lg font-semibold">Billing</h2>
+			<div class="card flex items-center justify-between">
+				<div>
+					<p class="text-sm font-medium">
+						if lc.Account.Plan == account.PlanTrial {
+							You're on the free trial.
+						} else {
+							Subscribed — { string(lc.Account.Plan) } plan.
+						}
+					</p>
+					<p class="text-xs text-zinc-500">
+						if !stripeEnabled {
+							Billing is not configured on this server.
+						} else {
+							Payments are handled by Stripe — no card details touch our servers.
+						}
+					</p>
+				</div>
+				if stripeEnabled && lc.Membership != nil && auth.Allowed(lc.Membership.Role, auth.ActionBillingWrite) {
+					if lc.Account.Plan == account.PlanTrial {
+						<div class="flex gap-2">
+							@billingCheckout("starter", "Subscribe — Starter")
+							@billingCheckout("pro", "Subscribe — Pro")
+						</div>
+					} else {
+						<form method="POST" action="/account/billing/portal">
+							@CSRFField()
+							<button type="submit" class="btn-ghost text-sm">Manage billing</button>
+						</form>
+					}
+				}
+			</div>
 		</section>
 
 		<section class="mb-8">
@@ -234,4 +259,13 @@ templ roleOption(value string, current account.Role) {
 	} else {
 		<option value={ value }>{ value }</option>
 	}
+}
+
+// billingCheckout is a one-button form that starts Stripe Checkout for a plan.
+templ billingCheckout(plan, label string) {
+	<form method="POST" action="/account/billing/checkout">
+		@CSRFField()
+		<input type="hidden" name="plan" value={ plan }/>
+		<button type="submit" class="btn-primary text-sm">{ label }</button>
+	</form>
 }

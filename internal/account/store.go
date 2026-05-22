@@ -162,6 +162,20 @@ func (s *Store) SetStripeCustomerID(ctx context.Context, accountID uuid.UUID, cu
 	return err
 }
 
+// SyncSubscription updates an account's plan and subscription state from a
+// Stripe webhook, matched by Stripe customer ID. An unknown customer is a
+// no-op — the event is for an account this server doesn't hold.
+func (s *Store) SyncSubscription(ctx context.Context, customerID, subscriptionID, status, plan string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE accounts
+		   SET plan = $2,
+		       stripe_subscription_id = NULLIF($3, ''),
+		       subscription_status    = NULLIF($4, '')
+		 WHERE stripe_customer_id = $1
+	`, customerID, plan, subscriptionID, status)
+	return err
+}
+
 // ListAccountsForUser returns every account the user is a member of, with
 // their role. Used by the account switcher in the nav.
 func (s *Store) ListAccountsForUser(ctx context.Context, userID uuid.UUID) ([]struct {
