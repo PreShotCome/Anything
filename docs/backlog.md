@@ -60,11 +60,21 @@ not started, planned · `debt` = works but should be revisited.
 
 ## Cross-cutting
 
-- **Down-migration prod safety** — `debt`. Down migrations are tested
-  locally and CI checks every migration declares an Up + Down; the plan
-  wants expand-then-contract verified on a prod-sized clone.
+- **Down-migration prod-data safety** — `debt`. A round-trip test now
+  executes every down migration in CI (see Resolved), so a broken down
+  section is caught. Still open: verifying expand-then-contract against a
+  prod-sized, populated clone — the round trip is schema-only.
 
 ## Resolved
+
+Cross-cutting:
+
+- **Migration round-trip test** — `TestMigrationsRoundTrip`
+  (`cmd/migrate`) applies every migration up, rolls them all back down to
+  zero, then applies them up again, against an isolated scratch database.
+  It runs in CI via `go test ./...` and proves the down sections actually
+  execute — the existing CI grep only checks a `+goose Down` section is
+  present.
 
 Layer-2 sandbox:
 
