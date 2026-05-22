@@ -119,8 +119,9 @@ templ TargetDetail(lc LayoutCtx, t drill.Target, asserts []drill.Assertion, errM
 					add assertions to check the data landed.
 				</p>
 			} else {
-				<table class="min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
-					<tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+				<div class="overflow-x-auto">
+					<table class="min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
+						<tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
 						for _, a := range asserts {
 							<tr>
 								<td class="px-4 py-2 font-mono text-xs">{ assertionSummary(a) }</td>
@@ -129,7 +130,7 @@ templ TargetDetail(lc LayoutCtx, t drill.Target, asserts []drill.Assertion, errM
 										<form method="POST"
 											action={ templ.SafeURL("/databases/" + t.ID.String() + "/assertions/" + a.ID.String() + "/delete") }>
 											@CSRFField()
-											<button type="submit" class="text-xs text-red-600 underline dark:text-red-400">Remove</button>
+											<button type="submit" class="text-xs text-rose-600 underline dark:text-rose-400">Remove</button>
 										</form>
 									}
 								</td>
@@ -137,6 +138,7 @@ templ TargetDetail(lc LayoutCtx, t drill.Target, asserts []drill.Assertion, errM
 						}
 					</tbody>
 				</table>
+				</div>
 			}
 		</div>
 		if lc.Membership != nil && auth.Allowed(lc.Membership.Role, auth.ActionTargetWrite) {

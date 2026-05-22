@@ -342,7 +342,7 @@ func DrillDetail(lc LayoutCtx, d drill.Drill, t drill.Target, steps []drill.Step
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div class=\"mb-4 flex items-baseline justify-between\"><h1 class=\"text-2xl font-semibold tracking-tight\">Drill</h1><a href=\"/drills\" class=\"text-sm underline\">All drills</a></div><dl class=\"card mb-6 grid grid-cols-2 gap-x-4 gap-y-2 text-sm\"><dt class=\"font-medium\">Target</dt><dd>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div class=\"mb-4 flex items-baseline justify-between\"><h1 class=\"text-2xl font-semibold tracking-tight\">Drill</h1><a href=\"/drills\" class=\"text-sm underline\">All drills</a></div><dl class=\"card mb-6 grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2\"><dt class=\"font-medium\">Target</dt><dd>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -433,7 +433,7 @@ func DrillDetail(lc LayoutCtx, d drill.Drill, t drill.Target, steps []drill.Step
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" class=\"btn-primary inline-block px-3 py-1 text-xs\">Download PDF</a></dd>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" class=\"btn-primary px-3 py-1 text-xs\">Download PDF</a></dd>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -520,7 +520,7 @@ func SignaturePanel(v evidence.VerifyResult) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</div><dl class=\"grid grid-cols-2 gap-x-4 gap-y-1 text-xs\"><dt class=\"text-zinc-500\">Signed at</dt><dd>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</div><dl class=\"grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2\"><dt class=\"text-zinc-500\">Signed at</dt><dd>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

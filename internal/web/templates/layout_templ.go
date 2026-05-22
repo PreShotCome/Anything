@@ -150,7 +150,7 @@ func LayoutWith(title string, lc LayoutCtx) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if lc.Impersonation != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div class=\"bg-amber-500 px-4 py-2 text-center text-sm font-medium text-amber-950\"><span>Staff impersonation — ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div class=\"bg-amber-500 px-4 py-2 text-center text-sm font-medium text-amber-950 dark:bg-amber-600 dark:text-amber-50\"><span>Staff impersonation — ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

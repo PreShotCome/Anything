@@ -207,7 +207,7 @@ func InvitationGone() templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"card mx-auto max-w-md space-y-2 text-center\"><h1 class=\"text-xl font-semibold\">Invitation unavailable</h1><p class=\"text-sm text-zinc-600 dark:text-zinc-400\">This invitation has expired or has already been accepted. Ask an account admin to send a new one.</p><a href=\"/\" class=\"btn-ghost mt-2 inline-block\">Go home</a></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"card mx-auto max-w-md space-y-2 text-center\"><h1 class=\"text-xl font-semibold\">Invitation unavailable</h1><p class=\"text-sm text-zinc-600 dark:text-zinc-400\">This invitation has expired or has already been accepted. Ask an account admin to send a new one.</p><a href=\"/\" class=\"btn-ghost mt-2\">Go home</a></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -254,7 +254,7 @@ func InvitationWrongEmail() templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<div class=\"card mx-auto max-w-md space-y-2 text-center\"><h1 class=\"text-xl font-semibold\">This invitation isn't for you</h1><p class=\"text-sm text-zinc-600 dark:text-zinc-400\">It was sent to a different email address. Sign in with the invited address, or ask an account admin to re-send it to yours.</p><a href=\"/\" class=\"btn-ghost mt-2 inline-block\">Go home</a></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<div class=\"card mx-auto max-w-md space-y-2 text-center\"><h1 class=\"text-xl font-semibold\">This invitation isn't for you</h1><p class=\"text-sm text-zinc-600 dark:text-zinc-400\">It was sent to a different email address. Sign in with the invited address, or ask an account admin to re-send it to yours.</p><a href=\"/\" class=\"btn-ghost mt-2\">Go home</a></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

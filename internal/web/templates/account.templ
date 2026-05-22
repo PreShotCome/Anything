@@ -13,7 +13,7 @@ templ AccountSettings(lc LayoutCtx, members []account.MembershipWithUser, pendin
 
 		<section class="mb-8">
 			<h2 class="mb-3 text-lg font-semibold">Settings</h2>
-			<dl class="card grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+			<dl class="card grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
 				<dt class="font-medium">Name</dt>
 				<dd>{ lc.Account.Name }</dd>
 				<dt class="font-medium">Slug</dt>
@@ -222,7 +222,7 @@ templ AccountDeleted(purgeAfter time.Time) {
 			<p class="text-xs text-zinc-500">
 				Contact support before then if this was a mistake.
 			</p>
-			<a href="/" class="btn-ghost mt-2 inline-block">Go home</a>
+			<a href="/" class="btn-ghost mt-2">Go home</a>
 		</div>
 	}
 }

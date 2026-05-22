@@ -317,7 +317,7 @@ func AdminUserDetail(v AdminUserDetailView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</h1><a href=\"/admin\" class=\"text-sm underline\">Admin home</a></div><dl class=\"card mb-6 grid grid-cols-2 gap-x-4 gap-y-2 text-sm\"><dt class=\"font-medium\">User ID</dt><dd class=\"font-mono text-xs\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</h1><a href=\"/admin\" class=\"text-sm underline\">Admin home</a></div><dl class=\"card mb-6 grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2\"><dt class=\"font-medium\">User ID</dt><dd class=\"font-mono text-xs\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -377,7 +377,7 @@ func AdminUserDetail(v AdminUserDetailView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<div class=\"flex-1 min-w-[18rem]\"><label class=\"mb-1 block text-sm font-medium\" for=\"reason\">Reason (recorded in the audit log)</label> <input id=\"reason\" name=\"reason\" type=\"text\" required minlength=\"3\" class=\"form-input\" placeholder=\"Investigating support ticket #123\"></div><button type=\"submit\" class=\"btn-primary\">Impersonate</button></form></section><section class=\"mb-6\"><h2 class=\"mb-2 text-lg font-semibold\">Accounts</h2>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<div class=\"flex-1 min-w-[14rem]\"><label class=\"mb-1 block text-sm font-medium\" for=\"reason\">Reason (recorded in the audit log)</label> <input id=\"reason\" name=\"reason\" type=\"text\" required minlength=\"3\" class=\"form-input\" placeholder=\"Investigating support ticket #123\"></div><button type=\"submit\" class=\"btn-primary\">Impersonate</button></form></section><section class=\"mb-6\"><h2 class=\"mb-2 text-lg font-semibold\">Accounts</h2>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -547,7 +547,7 @@ func AdminDrillDetail(lc LayoutCtx, d drill.Drill, t drill.Target, steps []drill
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<div class=\"mb-4 flex items-baseline justify-between\"><h1 class=\"text-2xl font-semibold tracking-tight\">Drill (staff view)</h1><a href=\"/admin\" class=\"text-sm underline\">Admin home</a></div><dl class=\"card mb-6 grid grid-cols-2 gap-x-4 gap-y-2 text-sm\"><dt class=\"font-medium\">Drill ID</dt><dd class=\"font-mono text-xs\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<div class=\"mb-4 flex items-baseline justify-between\"><h1 class=\"text-2xl font-semibold tracking-tight\">Drill (staff view)</h1><a href=\"/admin\" class=\"text-sm underline\">Admin home</a></div><dl class=\"card mb-6 grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2\"><dt class=\"font-medium\">Drill ID</dt><dd class=\"font-mono text-xs\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -756,7 +756,7 @@ func AdminAccountDetail(v AdminAccountDetailView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, " <dl class=\"card mb-6 grid grid-cols-2 gap-x-4 gap-y-2 text-sm\"><dt class=\"font-medium\">Account ID</dt><dd class=\"font-mono text-xs\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, " <dl class=\"card mb-6 grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2\"><dt class=\"font-medium\">Account ID</dt><dd class=\"font-mono text-xs\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1314,12 +1314,12 @@ func AdminSSO(lc LayoutCtx, configured bool) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if configured {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "<p class=\"text-sm text-zinc-600 dark:text-zinc-400\">The admin panel requires a fresh single-sign-on check. Continue with your staff identity provider to verify — the check lasts one hour, then you will be asked again.</p><a href=\"/admin/sso/start\" class=\"btn-primary inline-block\">Continue with Google</a>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "<p class=\"text-sm text-zinc-600 dark:text-zinc-400\">The admin panel requires a fresh single-sign-on check. Continue with your staff identity provider to verify — the check lasts one hour, then you will be asked again.</p><a href=\"/admin/sso/start\" class=\"btn-primary\">Continue with Google</a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "<p class=\"text-sm text-zinc-600 dark:text-zinc-400\">Single sign-on is not configured in this environment, so no step-up is required — staff access is granted directly.</p><a href=\"/admin\" class=\"btn-primary inline-block\">Go to admin</a>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "<p class=\"text-sm text-zinc-600 dark:text-zinc-400\">Single sign-on is not configured in this environment, so no step-up is required — staff access is granted directly.</p><a href=\"/admin\" class=\"btn-primary\">Go to admin</a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

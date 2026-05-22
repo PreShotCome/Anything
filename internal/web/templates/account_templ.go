@@ -48,7 +48,7 @@ func AccountSettings(lc LayoutCtx, members []account.MembershipWithUser, pending
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1 class=\"mb-6 text-2xl font-semibold tracking-tight\">Account</h1><section class=\"mb-8\"><h2 class=\"mb-3 text-lg font-semibold\">Settings</h2><dl class=\"card grid grid-cols-2 gap-x-4 gap-y-2 text-sm\"><dt class=\"font-medium\">Name</dt><dd>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1 class=\"mb-6 text-2xl font-semibold tracking-tight\">Account</h1><section class=\"mb-8\"><h2 class=\"mb-3 text-lg font-semibold\">Settings</h2><dl class=\"card grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2\"><dt class=\"font-medium\">Name</dt><dd>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -415,7 +415,7 @@ func AccountDeleted(purgeAfter time.Time) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, ".</p><p class=\"text-xs text-zinc-500\">Contact support before then if this was a mistake.</p><a href=\"/\" class=\"btn-ghost mt-2 inline-block\">Go home</a></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, ".</p><p class=\"text-xs text-zinc-500\">Contact support before then if this was a mistake.</p><a href=\"/\" class=\"btn-ghost mt-2\">Go home</a></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
