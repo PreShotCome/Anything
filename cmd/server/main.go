@@ -76,7 +76,12 @@ func main() {
 	auditLog := audit.New(pool)
 	drillStore := drill.NewStore(pool)
 	accountStore := account.NewStore(pool)
-	billingCustomers := billing.NewStripeCustomers(cfg.StripeSecretKey)
+	billingCustomers := billing.New(billing.Config{
+		SecretKey:     cfg.StripeSecretKey,
+		WebhookSecret: cfg.StripeWebhookSecret,
+		PriceStarter:  cfg.StripePriceStarter,
+		PricePro:      cfg.StripePricePro,
+	})
 	if billingCustomers.Enabled() {
 		logger.Info("billing enabled (stripe)")
 	} else {

@@ -35,7 +35,7 @@ type Handlers struct {
 	drills          *drill.Store
 	orch            *drill.Orchestrator
 	accounts        *account.Store
-	billing         billing.Customers
+	billing         billing.Service
 	throttle        *auth.LoginThrottle
 	webhooks        *webhooks.Store
 	webhookDispatch *webhooks.Dispatcher
@@ -66,7 +66,7 @@ type Deps struct {
 	Drills          *drill.Store
 	Orchestrator    *drill.Orchestrator
 	Accounts        *account.Store
-	Billing         billing.Customers
+	Billing         billing.Service
 	Throttle        *auth.LoginThrottle
 	Webhooks        *webhooks.Store
 	WebhookDispatch *webhooks.Dispatcher
@@ -181,6 +181,10 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 	// Inbound Postmark bounce/complaint webhook — authenticated by the
 	// token path segment, CSRF-exempt (see csrf.New in main).
 	r.Post("/webhooks/postmark/{token}", h.postmarkBounce)
+
+	// Inbound Stripe webhook — authenticated by the Stripe-Signature header,
+	// CSRF-exempt (the /webhooks/ prefix is exempted in csrf.New).
+	r.Post("/webhooks/stripe", h.stripeWebhook)
 
 	// The versioned JSON API: API-key auth, no session/CSRF (csrf.New
 	// exempts the /v1/ prefix). Mounted at the top level so it's outside
@@ -321,6 +325,12 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 			r.Post("/account/api-keys/{id}/revoke", h.apiKeyRevoke)
 			r.Get("/account/export", h.accountExport)
 			r.Post("/account/delete", h.accountDelete)
+		})
+		// Billing — starting Checkout / opening the Customer Portal.
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAction(auth.ActionBillingWrite))
+			r.Post("/account/billing/checkout", h.billingCheckout)
+			r.Post("/account/billing/portal", h.billingPortal)
 		})
 	})
 

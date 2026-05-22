@@ -18,10 +18,10 @@ not started, planned · `debt` = works but should be revisited.
 
 ## Layer 3 — Multi-tenant
 
-- **Stripe billing is a skeleton** — `seam`. `billing.Customers` creates a
-  Stripe customer only. No Checkout, subscriptions, metered usage, or plan
-  enforcement. Plan tiers (`trial/starter/pro`) exist as a column but
-  nothing reads them.
+- **Plan enforcement & metered billing** — `deferred`. The Stripe
+  subscription lifecycle is built (Checkout, Customer Portal, webhook sync —
+  see Resolved), so `accounts.plan` is accurate. But no feature is gated on
+  the tier yet, and there is no metered/usage billing.
 ## Layer 4 — Perimeter & webhooks
 
 - **Social login** — `deferred`. Plan layer 5 identity work. Password,
@@ -79,6 +79,14 @@ not started, planned · `debt` = works but should be revisited.
   wants expand-then-contract verified on a prod-sized clone.
 
 ## Resolved
+
+Layer-3 billing:
+
+- **Stripe subscription lifecycle** — `internal/billing` talks to Stripe's
+  REST API directly: customer creation, subscription Checkout, the Customer
+  Portal, and a signature-verified `/webhooks/stripe` endpoint that syncs
+  `customer.subscription.*` events to the account's plan + status. Activated
+  by `STRIPE_*` env vars; see `docs/runbooks/stripe.md`.
 
 Layer-2 drills:
 

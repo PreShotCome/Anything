@@ -19,9 +19,12 @@ type Config struct {
 	EvidenceDir    string
 	// SourceDir is the only directory a database target's source dump may
 	// live under — customer-supplied paths are confined to it.
-	SourceDir          string
-	StripeSecretKey    string
-	EvidenceSigningKey string
+	SourceDir           string
+	StripeSecretKey     string
+	StripeWebhookSecret string
+	StripePriceStarter  string
+	StripePricePro      string
+	EvidenceSigningKey  string
 	// EvidenceVerificationKeys holds zero or more concatenated PEM public-key
 	// blocks — keys retired by rotation, kept so old evidence still verifies.
 	EvidenceVerificationKeys string
@@ -50,6 +53,9 @@ func Load() (Config, error) {
 		EvidenceDir:              getenv("EVIDENCE_DIR", "tmp/evidence"),
 		SourceDir:                getenv("SOURCE_DIR", "tmp/sources"),
 		StripeSecretKey:          os.Getenv("STRIPE_SECRET_KEY"),
+		StripeWebhookSecret:      os.Getenv("STRIPE_WEBHOOK_SECRET"),
+		StripePriceStarter:       os.Getenv("STRIPE_PRICE_STARTER"),
+		StripePricePro:           os.Getenv("STRIPE_PRICE_PRO"),
 		EvidenceSigningKey:       os.Getenv("EVIDENCE_SIGNING_KEY"),
 		EvidenceVerificationKeys: os.Getenv("EVIDENCE_VERIFICATION_KEYS"),
 		EvidenceEncryptionKey:    os.Getenv("EVIDENCE_ENCRYPTION_KEY"),

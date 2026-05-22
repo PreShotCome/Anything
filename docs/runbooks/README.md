@@ -11,7 +11,7 @@ Each service is independent — activate them in any order.
 | Service | Purpose | Code status | Runbook |
 |---|---|---|---|
 | Postmark | Transactional email | ✅ complete | [postmark.md](postmark.md) |
-| Stripe | Billing / subscriptions | ⬜ pending | — |
+| Stripe | Billing / subscriptions | ✅ complete | [stripe.md](stripe.md) |
 | Fly Machines | Per-drill cloud sandbox | ⬜ pending | — |
 | S3 / R2 Object Lock | Evidence storage | ⬜ pending | — |
 | Google + GitHub OAuth | Social login | ⬜ pending | — |
