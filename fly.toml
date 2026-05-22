@@ -21,6 +21,16 @@ primary_region = "sea"
 [env]
   ADDR = ":8080"
   ENV = "prod"
+  # Evidence PDFs live on a persistent volume (see [mounts]) so they
+  # survive deploys. For multi-machine scale, switch to S3/R2 instead by
+  # setting the EVIDENCE_S3_* secrets — see docs/runbooks/s3.md.
+  EVIDENCE_DIR = "/data/evidence"
+
+# Persistent volume for evidence. Create it once before the first deploy:
+#   fly volumes create soteria_evidence --region sea --size 1
+[mounts]
+  source = "soteria_evidence"
+  destination = "/data"
 
 [http_service]
   internal_port = 8080
