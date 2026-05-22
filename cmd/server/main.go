@@ -30,6 +30,7 @@ import (
 	"github.com/preshotcome/anything/internal/email"
 	"github.com/preshotcome/anything/internal/evidence"
 	"github.com/preshotcome/anything/internal/flags"
+	"github.com/preshotcome/anything/internal/oauth"
 	"github.com/preshotcome/anything/internal/obs"
 	"github.com/preshotcome/anything/internal/ratelimit"
 	"github.com/preshotcome/anything/internal/runner"
@@ -107,6 +108,12 @@ func main() {
 	}
 	analyticsClient := analytics.New(cfg.PostHogAPIKey, cfg.PostHogHost, logger)
 	featureFlags := flags.New(cfg.PostHogAPIKey, cfg.PostHogHost, logger)
+	oauthRegistry := oauth.NewRegistry(
+		cfg.GoogleOAuthClientID, cfg.GoogleOAuthClientSecret,
+		cfg.GitHubOAuthClientID, cfg.GitHubOAuthClientSecret)
+	if names := oauthRegistry.Names(); len(names) > 0 {
+		logger.Info("social login enabled", "providers", names)
+	}
 
 	// Evidence: detached-signature signer + local store.
 	signer, err := evidence.NewSignerWithVerificationKeys(cfg.EvidenceSigningKey, cfg.EvidenceVerificationKeys)
@@ -207,6 +214,8 @@ func main() {
 		APIKeys:              apikey.NewStore(pool),
 		V1Limiter:            v1Limiter,
 		SourceDir:            cfg.SourceDir,
+		OAuth:                oauthRegistry,
+		SecureCookies:        cfg.IsProduction(),
 	})
 
 	// Sample River queue depth into the metrics gauge every 15s.

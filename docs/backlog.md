@@ -24,9 +24,6 @@ not started, planned · `debt` = works but should be revisited.
   the tier yet, and there is no metered/usage billing.
 ## Layer 4 — Perimeter & webhooks
 
-- **Social login** — `deferred`. Plan layer 5 identity work. Password,
-  TOTP MFA, and passwordless magic-link login are built; Google/GitHub
-  social login is not (needs external OAuth apps).
 
 ## Layer 5 — Compliance / evidence
 

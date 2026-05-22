@@ -39,6 +39,11 @@ type Config struct {
 	PostHogAPIKey        string
 	PostHogHost          string
 
+	GoogleOAuthClientID     string
+	GoogleOAuthClientSecret string
+	GitHubOAuthClientID     string
+	GitHubOAuthClientSecret string
+
 	StaffEmails  []string
 	MetricsToken string
 }
@@ -66,8 +71,13 @@ func Load() (Config, error) {
 		EmailFrom:            getenv("EMAIL_FROM", "notifications@restoredrill.io"),
 		PostHogAPIKey:        os.Getenv("POSTHOG_API_KEY"),
 		PostHogHost:          os.Getenv("POSTHOG_HOST"),
-		StaffEmails:          parseList(os.Getenv("STAFF_EMAILS")),
-		MetricsToken:         os.Getenv("METRICS_TOKEN"),
+
+		GoogleOAuthClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
+		GoogleOAuthClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
+		GitHubOAuthClientID:     os.Getenv("GITHUB_OAUTH_CLIENT_ID"),
+		GitHubOAuthClientSecret: os.Getenv("GITHUB_OAUTH_CLIENT_SECRET"),
+		StaffEmails:             parseList(os.Getenv("STAFF_EMAILS")),
+		MetricsToken:            os.Getenv("METRICS_TOKEN"),
 	}
 
 	if c.DatabaseURL == "" {

@@ -21,6 +21,7 @@ import (
 	"github.com/preshotcome/anything/internal/email"
 	"github.com/preshotcome/anything/internal/evidence"
 	"github.com/preshotcome/anything/internal/flags"
+	"github.com/preshotcome/anything/internal/oauth"
 	"github.com/preshotcome/anything/internal/obs"
 	"github.com/preshotcome/anything/internal/ratelimit"
 	"github.com/preshotcome/anything/internal/web/csrf"
@@ -57,6 +58,8 @@ type Handlers struct {
 	apiKeys              *apikey.Store
 	v1Limiter            *ratelimit.Limiter
 	sourceDir            string
+	oauth                *oauth.Registry
+	secureCookies        bool
 }
 
 type Deps struct {
@@ -88,6 +91,8 @@ type Deps struct {
 	APIKeys              *apikey.Store
 	V1Limiter            *ratelimit.Limiter
 	SourceDir            string
+	OAuth                *oauth.Registry
+	SecureCookies        bool
 }
 
 func New(d Deps) *Handlers {
@@ -124,6 +129,8 @@ func New(d Deps) *Handlers {
 		apiKeys:              d.APIKeys,
 		v1Limiter:            d.V1Limiter,
 		sourceDir:            d.SourceDir,
+		oauth:                d.OAuth,
+		secureCookies:        d.SecureCookies,
 	}
 }
 
@@ -215,6 +222,9 @@ func (h *Handlers) Router(staticFS http.FileSystem) http.Handler {
 		r.Get("/login/magic", h.magicLinkRequestPage)
 		r.Post("/login/magic", h.magicLinkRequest)
 		r.Get("/login/magic/{token}", h.magicLinkConsume)
+		// Social login (OAuth) — start + provider callback.
+		r.Get("/auth/{provider}/start", h.oauthStart)
+		r.Get("/auth/{provider}/callback", h.oauthCallback)
 	})
 	r.Post("/logout", h.logout)
 
