@@ -55,7 +55,7 @@ func LegalPage(lc LayoutCtx, title string, body templ.Component) templ.Component
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</h1><div class=\"alert-error mb-6\">DRAFT — placeholder text, not legal advice. The production documents are drafted by counsel before the first paid customer.</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</h1><div class=\"alert-warning mb-6\">DRAFT — placeholder text, not legal advice. The production documents are drafted by counsel before the first paid customer.</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

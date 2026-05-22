@@ -145,7 +145,7 @@ templ AdminUserDetail(v AdminUserDetailView) {
 			<a href="/admin" class="text-sm underline">Admin home</a>
 		</div>
 
-		<dl class="card mb-6 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+		<dl class="card mb-6 grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
 			<dt class="font-medium">User ID</dt>
 			<dd class="font-mono text-xs">{ v.User.ID.String() }</dd>
 			<dt class="font-medium">Staff</dt>
@@ -158,7 +158,7 @@ templ AdminUserDetail(v AdminUserDetailView) {
 			<h2 class="mb-2 text-lg font-semibold">Impersonate</h2>
 			<form method="POST" action={ templ.SafeURL("/admin/users/" + v.User.ID.String() + "/impersonate") } class="card flex flex-wrap items-end gap-3">
 				@CSRFField()
-				<div class="flex-1 min-w-[18rem]">
+				<div class="flex-1 min-w-[14rem]">
 					<label class="mb-1 block text-sm font-medium" for="reason">Reason (recorded in the audit log)</label>
 					<input id="reason" name="reason" type="text" required minlength="3" class="form-input" placeholder="Investigating support ticket #123"/>
 				</div>
@@ -220,7 +220,7 @@ templ AdminDrillDetail(lc LayoutCtx, d drill.Drill, t drill.Target, steps []dril
 			<h1 class="text-2xl font-semibold tracking-tight">Drill (staff view)</h1>
 			<a href="/admin" class="text-sm underline">Admin home</a>
 		</div>
-		<dl class="card mb-6 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+		<dl class="card mb-6 grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
 			<dt class="font-medium">Drill ID</dt>
 			<dd class="font-mono text-xs">{ d.ID.String() }</dd>
 			<dt class="font-medium">Account ID</dt>
@@ -263,7 +263,7 @@ templ AdminAccountDetail(v AdminAccountDetailView) {
 			<div class="alert-error mb-4">{ v.ActionError }</div>
 		}
 
-		<dl class="card mb-6 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+		<dl class="card mb-6 grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
 			<dt class="font-medium">Account ID</dt>
 			<dd class="font-mono text-xs">{ v.Account.ID.String() }</dd>
 			<dt class="font-medium">Slug</dt>
@@ -453,13 +453,13 @@ templ AdminSSO(lc LayoutCtx, configured bool) {
 					with your staff identity provider to verify — the check lasts one
 					hour, then you will be asked again.
 				</p>
-				<a href="/admin/sso/start" class="btn-primary inline-block">Continue with Google</a>
+				<a href="/admin/sso/start" class="btn-primary">Continue with Google</a>
 			} else {
 				<p class="text-sm text-zinc-600 dark:text-zinc-400">
 					Single sign-on is not configured in this environment, so no
 					step-up is required — staff access is granted directly.
 				</p>
-				<a href="/admin" class="btn-primary inline-block">Go to admin</a>
+				<a href="/admin" class="btn-primary">Go to admin</a>
 			}
 		</div>
 	}

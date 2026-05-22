@@ -92,7 +92,7 @@ templ DrillDetail(lc LayoutCtx, d drill.Drill, t drill.Target, steps []drill.Ste
 			<h1 class="text-2xl font-semibold tracking-tight">Drill</h1>
 			<a href="/drills" class="text-sm underline">All drills</a>
 		</div>
-		<dl class="card mb-6 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+		<dl class="card mb-6 grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
 			<dt class="font-medium">Target</dt>
 			<dd>{ t.Name } <span class="text-xs text-zinc-500">({ t.SourceURI })</span></dd>
 			<dt class="font-medium">Drill ID</dt>
@@ -107,7 +107,7 @@ templ DrillDetail(lc LayoutCtx, d drill.Drill, t drill.Target, steps []drill.Ste
 				<dt class="font-medium">Evidence</dt>
 				<dd>
 					<a href={ templ.SafeURL("/drills/" + d.ID.String() + "/evidence") }
-					   class="btn-primary inline-block px-3 py-1 text-xs">Download PDF</a>
+					   class="btn-primary px-3 py-1 text-xs">Download PDF</a>
 				</dd>
 			}
 		</dl>
@@ -140,7 +140,7 @@ templ SignaturePanel(v evidence.VerifyResult) {
 				<span class="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">invalid</span>
 			}
 		</div>
-		<dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+		<dl class="grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
 			<dt class="text-zinc-500">Signed at</dt>
 			<dd>{ v.SignedAt.UTC().Format(time.RFC3339) }</dd>
 			<dt class="text-zinc-500">Retain until</dt>
