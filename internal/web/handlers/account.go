@@ -29,8 +29,16 @@ func (h *Handlers) accountSettings(w http.ResponseWriter, r *http.Request) {
 // --- /account/invitations ---
 
 func (h *Handlers) inviteCreate(w http.ResponseWriter, r *http.Request) {
-	u, _ := auth.FromContext(r.Context())
-	acct, _ := auth.CurrentAccountFromContext(r.Context())
+	lc := h.layoutCtx(r)
+	u, acct := lc.User, lc.Account
+
+	members, _ := h.accounts.ListMembers(r.Context(), acct.ID)
+	pending, _ := h.accounts.ListPendingInvitations(r.Context(), acct.ID)
+	if h.enforceLimit(w, r, lc, "seats", len(members)+len(pending),
+		account.LimitsFor(acct.Plan).Seats) {
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return

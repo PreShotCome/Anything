@@ -45,7 +45,9 @@ func v1TestServer(t *testing.T, pool *pgxpool.Pool) (*httptest.Server, string, u
 		userID, "v1-"+userID.String()+"@example.com"); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO accounts (id,name,slug) VALUES ($1,'v1','v1-'||$2)`,
+	// Seed on the Pro tier so plan limits don't constrain the API tests —
+	// limit enforcement has its own dedicated coverage.
+	if _, err := pool.Exec(ctx, `INSERT INTO accounts (id,name,slug,plan) VALUES ($1,'v1','v1-'||$2,'pro')`,
 		accountID, accountID.String()[:8]); err != nil {
 		t.Fatalf("seed account: %v", err)
 	}
@@ -317,6 +319,49 @@ func TestV1Pagination(t *testing.T) {
 	meta2, _ := env2["meta"].(map[string]any)
 	if nc, _ := meta2["next_cursor"].(string); nc != "" {
 		t.Fatalf("page 2 should be the last page, got next_cursor %q", nc)
+	}
+}
+
+// TestV1DatabasePlanLimit verifies the subscription-tier cap is enforced on
+// the /v1 database create path: a trial account gets one database, the next
+// POST is rejected with 403 plan_limit.
+func TestV1DatabasePlanLimit(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+	srv, key, accountID, _, _ := v1TestServer(t, pool)
+
+	// v1TestServer seeds Pro; drop to trial — one database allowed.
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE accounts SET plan='trial' WHERE id=$1`, accountID); err != nil {
+		t.Fatalf("set plan: %v", err)
+	}
+
+	fixture := mustAbsTestdata(t)
+	body := `{"name":"db","source_uri":"` + fixture + `"}`
+
+	// First database — within the trial cap.
+	if resp, _ := v1Do(t, "POST", srv.URL+"/databases", key, uuid.NewString(), body); resp.StatusCode != 201 {
+		t.Fatalf("first create: got %d, want 201", resp.StatusCode)
+	}
+	// Second — over the cap.
+	resp, env := v1Do(t, "POST", srv.URL+"/databases", key, uuid.NewString(), body)
+	if resp.StatusCode != 403 {
+		t.Fatalf("second create: got %d, want 403", resp.StatusCode)
+	}
+	errs, _ := env["errors"].([]any)
+	if len(errs) == 0 {
+		t.Fatal("403 response should carry an error")
+	}
+	first, _ := errs[0].(map[string]any)
+	if code, _ := first["code"].(string); code != "plan_limit" {
+		t.Fatalf("error code = %q, want plan_limit", code)
 	}
 }
 

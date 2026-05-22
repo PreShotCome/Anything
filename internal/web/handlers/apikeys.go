@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/preshotcome/anything/internal/account"
 	"github.com/preshotcome/anything/internal/apikey"
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/web/templates"
@@ -21,6 +22,19 @@ func (h *Handlers) apiKeysList(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) apiKeyCreate(w http.ResponseWriter, r *http.Request) {
 	lc := h.layoutCtx(r)
+
+	existing, _ := h.apiKeys.List(r.Context(), lc.Account.ID)
+	active := 0
+	for _, k := range existing {
+		if k.RevokedAt == nil {
+			active++
+		}
+	}
+	if h.enforceLimit(w, r, lc, "API keys", active,
+		account.LimitsFor(lc.Account.Plan).APIKeys) {
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return

@@ -15,10 +15,9 @@ not started, planned · `debt` = works but should be revisited.
 
 ## Layer 3 — Multi-tenant
 
-- **Plan enforcement & metered billing** — `deferred`. The Stripe
-  subscription lifecycle is built (Checkout, Customer Portal, webhook sync —
-  see Resolved), so `accounts.plan` is accurate. But no feature is gated on
-  the tier yet, and there is no metered/usage billing.
+- **Metered / usage billing** — `deferred`. Per-tier feature caps are now
+  enforced (see Resolved), but there is no usage-based / metered billing —
+  e.g. charging per database or per drill above an included allowance.
 ## Layer 4 — Perimeter & webhooks
 
 
@@ -103,6 +102,12 @@ Layer-9 growth:
 
 Layer-3 billing:
 
+- **Plan enforcement** — each subscription tier now caps the countable
+  resources an account can create: databases, team seats (members +
+  pending invitations), API keys, and webhook endpoints. Trial = 1 each
+  (2 seats); Starter = 5 each (10 seats); Pro = uncapped. `account.LimitsFor`
+  holds the table; the web + `/v1` create handlers reject an over-cap
+  request — the UI shows an upgrade page, the API returns `403 plan_limit`.
 - **Stripe subscription lifecycle** — `internal/billing` talks to Stripe's
   REST API directly: customer creation, subscription Checkout, the Customer
   Portal, and a signature-verified `/webhooks/stripe` endpoint that syncs

@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/preshotcome/anything/internal/account"
 	"github.com/preshotcome/anything/internal/audit"
 	"github.com/preshotcome/anything/internal/web/templates"
 	"github.com/preshotcome/anything/internal/webhooks"
@@ -24,6 +25,13 @@ func (h *Handlers) webhooksList(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) webhookCreate(w http.ResponseWriter, r *http.Request) {
 	lc := h.layoutCtx(r)
+
+	existing, _ := h.webhooks.ListEndpoints(r.Context(), lc.Account.ID)
+	if h.enforceLimit(w, r, lc, "webhooks", len(existing),
+		account.LimitsFor(lc.Account.Plan).Webhooks) {
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
