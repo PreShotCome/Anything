@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>What is a Drill? — Soteria</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; }
+  .tab-active { border-bottom-color: #111827 !important; color: #111827 !important; font-weight: 500; }
+  .tab-inactive { border-bottom-color: transparent; color: #6b7280; }
+  .section-label { letter-spacing: 0.1em; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .accent-bar-green { box-shadow: inset 3px 0 0 0 #22c55e; }
+  .accent-bar-gray { box-shadow: inset 3px 0 0 0 #d1d5db; }
+  .progress-track { height: 6px; border-radius: 999px; background: #f3f4f6; overflow: hidden; }
+  .progress-fill { height: 100%; background: #22c55e; border-radius: 999px; transition: width 0.3s; }
+  .why-tab-active { background: #f9fafb; color: #111827; font-weight: 600; }
+  .why-tab-inactive { color: #6b7280; }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+
+<div class="max-w-5xl mx-auto px-6 py-12">
+
+  <!-- Header -->
+  <div class="mb-10">
+    <div class="text-xs uppercase section-label text-green-600 font-semibold mb-3">A Soteria Primer</div>
+    <h1 class="text-4xl font-bold mb-3 tracking-tight">What is a Drill?</h1>
+    <p class="text-lg text-gray-600">Backups you can prove will restore.</p>
+  </div>
+
+  <!-- Card with tabs -->
+  <div class="bg-white border border-gray-200 rounded-xl shadow-sm">
+    <!-- Tab nav -->
+    <div class="flex border-b border-gray-200 px-4 overflow-x-auto">
+      <button data-tab="overview" class="tab-btn px-5 py-4 text-sm whitespace-nowrap border-b-2 tab-inactive">Overview</button>
+      <button data-tab="risk" class="tab-btn px-5 py-4 text-sm whitespace-nowrap border-b-2 tab-inactive">The Risk</button>
+      <button data-tab="how" class="tab-btn px-5 py-4 text-sm whitespace-nowrap border-b-2 tab-inactive">How a Drill Works</button>
+      <button data-tab="schedule" class="tab-btn px-5 py-4 text-sm whitespace-nowrap border-b-2 tab-inactive">Sample Schedule</button>
+      <button data-tab="included" class="tab-btn px-5 py-4 text-sm whitespace-nowrap border-b-2 tab-inactive">What's Included</button>
+    </div>
+
+    <div class="p-8 md:p-10">
+
+      <!-- OVERVIEW -->
+      <div id="panel-overview" class="panel active space-y-8">
+
+        <!-- Current Situation callout -->
+        <div>
+          <div class="text-xs uppercase section-label text-gray-500 font-semibold mb-3">CURRENT SITUATION</div>
+          <div class="bg-white border border-gray-200 rounded-lg p-6 accent-bar-gray">
+            <p class="text-gray-700 leading-relaxed">
+              Your team runs nightly backups. The dashboard shows green. But no one
+              has actually tried to restore one in months. When the bad day comes
+              — ransomware, a bad migration, a dropped table — you discover the
+              backup is corrupted, incomplete, or takes 14 hours to restore. By
+              then it's too late.
+            </p>
+          </div>
+        </div>
+
+        <!-- The Drill Solution callout -->
+        <div>
+          <div class="text-xs uppercase section-label text-green-600 font-semibold mb-3">THE DRILL SOLUTION</div>
+          <div class="bg-white border border-gray-200 rounded-lg p-6 accent-bar-green">
+            <p class="text-gray-700 leading-relaxed">
+              A drill is a controlled restore. We pull your latest backup into a
+              clean, isolated database, run the assertions your team defines —
+              row counts, schema integrity, critical tables present, business
+              invariants — and produce a cryptographically signed PDF as proof.
+              Run on a schedule. Fail loudly when something's off. Catch the
+              broken backup on a Tuesday, not during the outage.
+            </p>
+          </div>
+        </div>
+
+        <!-- Why Drilling -->
+        <div>
+          <div class="text-xs uppercase section-label text-gray-700 font-semibold mb-4 border-l-2 border-gray-900 pl-2">WHY DRILLING</div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Left column: tab list -->
+            <div class="space-y-2">
+              <button data-why="silent" class="why-tab w-full text-left px-4 py-3 rounded-lg border border-gray-200 why-tab-active">
+                <div class="text-xs text-gray-400 mb-1">01</div>
+                <div>Catch silent failures</div>
+              </button>
+              <button data-why="compliance" class="why-tab w-full text-left px-4 py-3 rounded-lg border border-gray-200 why-tab-inactive">
+                <div class="text-xs text-gray-400 mb-1">02</div>
+                <div>Compliance evidence</div>
+              </button>
+              <button data-why="recovery" class="why-tab w-full text-left px-4 py-3 rounded-lg border border-gray-200 why-tab-inactive">
+                <div class="text-xs text-gray-400 mb-1">03</div>
+                <div>Faster real recovery</div>
+              </button>
+            </div>
+
+            <!-- Right column: content -->
+            <div class="md:col-span-2">
+              <div id="why-silent" class="why-panel">
+                <h3 class="text-xl font-bold mb-4">Catch silent failures</h3>
+                <div class="space-y-4">
+                  <div class="border border-gray-200 rounded-lg p-5">
+                    <div class="text-xs uppercase section-label text-gray-500 mb-2">THE WHAT-MONITORING-MISSES PROBLEM</div>
+                    <p class="text-gray-700 text-sm leading-relaxed">
+                      Backup software reports "success" the moment the bytes are
+                      written. It doesn't verify the bytes can be restored into a
+                      working database. Schema drift, corrupted blocks, missing
+                      WAL segments, encryption-key rotation gone wrong — all
+                      invisible until restore time.
+                    </p>
+                  </div>
+                  <div class="border border-gray-200 rounded-lg p-5">
+                    <div class="text-xs uppercase section-label text-gray-500 mb-2">WHAT A DRILL CATCHES</div>
+                    <p class="text-gray-700 text-sm leading-relaxed">
+                      Bad dumps, truncated files, schema changes that broke a
+                      consumer, tables that quietly stopped being included, row
+                      counts that diverged from production. The thing you needed
+                      to know weeks ago.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div id="why-compliance" class="why-panel hidden">
+                <h3 class="text-xl font-bold mb-4">Compliance evidence</h3>
+                <div class="space-y-4">
+                  <div class="border border-gray-200 rounded-lg p-5">
+                    <div class="text-xs uppercase section-label text-gray-500 mb-2">WHAT AUDITORS ACTUALLY WANT</div>
+                    <p class="text-gray-700 text-sm leading-relaxed">
+                      SOC 2, ISO 27001, HIPAA, PCI — every framework expects
+                      periodic restore testing. Auditors don't want a policy
+                      document saying you do it. They want signed, dated proof
+                      that you actually did it.
+                    </p>
+                  </div>
+                  <div class="border border-gray-200 rounded-lg p-5">
+                    <div class="text-xs uppercase section-label text-gray-500 mb-2">WHAT A DRILL PRODUCES</div>
+                    <p class="text-gray-700 text-sm leading-relaxed">
+                      A cryptographically signed PDF for every drill — the dump
+                      fingerprint, the assertions run, pass/fail results, time
+                      taken, the signing key. Hand them the folder; the audit
+                      conversation ends in 10 minutes instead of 10 days.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div id="why-recovery" class="why-panel hidden">
+                <h3 class="text-xl font-bold mb-4">Faster real recovery</h3>
+                <div class="space-y-4">
+                  <div class="border border-gray-200 rounded-lg p-5">
+                    <div class="text-xs uppercase section-label text-gray-500 mb-2">THE REHEARSAL EFFECT</div>
+                    <p class="text-gray-700 text-sm leading-relaxed">
+                      A drill rehearses the restore path. When the real outage
+                      hits, your team has done it a hundred times. The runbook
+                      isn't theoretical — it's the same flow they watched
+                      complete this morning.
+                    </p>
+                  </div>
+                  <div class="border border-gray-200 rounded-lg p-5">
+                    <div class="text-xs uppercase section-label text-gray-500 mb-2">THE OUTCOME</div>
+                    <p class="text-gray-700 text-sm leading-relaxed">
+                      Restore time goes from "we'll have to figure it out" to a
+                      number you've measured every day for the past month. RTO
+                      stops being aspirational.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- THE RISK -->
+      <div id="panel-risk" class="panel space-y-8">
+        <div>
+          <div class="text-xs uppercase section-label text-gray-500 font-semibold mb-4">THE COST OF UNTESTED BACKUPS</div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+            <div class="bg-red-50 border border-red-100 rounded-lg p-5">
+              <div class="text-xs uppercase section-label text-red-700 font-semibold mb-2">RESTORES THAT FAIL</div>
+              <div class="text-3xl font-bold mb-1">~1 in 3</div>
+              <div class="text-xs text-gray-500">on first attempt</div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg p-5">
+              <div class="text-xs uppercase section-label text-gray-500 font-semibold mb-2">DOWNTIME COST</div>
+              <div class="text-3xl font-bold mb-1">$5,600</div>
+              <div class="text-xs text-gray-500">per minute (Gartner)</div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg p-5">
+              <div class="text-xs uppercase section-label text-gray-500 font-semibold mb-2">TIME TO DETECT</div>
+              <div class="text-3xl font-bold mb-1">Days</div>
+              <div class="text-xs text-gray-500">often only at restore</div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg p-5">
+              <div class="text-xs uppercase section-label text-gray-500 font-semibold mb-2">TEAMS WHO TEST WEEKLY</div>
+              <div class="text-3xl font-bold mb-1">&lt; 1 in 5</div>
+              <div class="text-xs text-gray-500">most test annually or never</div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="border border-gray-200 rounded-lg p-6">
+          <div class="text-xs uppercase section-label text-gray-500 font-semibold mb-3">WHAT THIS LOOKS LIKE IN PRACTICE</div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <div class="text-sm font-semibold text-gray-700 mb-2">Without drilling</div>
+              <ul class="text-sm text-gray-600 space-y-2 list-disc list-inside">
+                <li>Backups show "success"; no one verifies</li>
+                <li>Restore tested at most once a year</li>
+                <li>Audit prep is a frantic scramble</li>
+                <li>First real restore is during the outage</li>
+                <li>RTO/RPO are guesses on a wiki page</li>
+              </ul>
+            </div>
+            <div>
+              <div class="text-sm font-semibold text-green-700 mb-2">With drilling</div>
+              <ul class="text-sm text-gray-600 space-y-2 list-disc list-inside">
+                <li>Every backup verified against assertions you wrote</li>
+                <li>Failures alert in minutes, not at the next outage</li>
+                <li>Signed PDFs ready for any auditor, any time</li>
+                <li>The restore path runs daily — no surprises</li>
+                <li>RTO is the median of the last 30 drills</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-xs text-gray-400">
+          Industry estimates. Gartner downtime cost is a widely-cited average; your number depends on your business.
+        </p>
+      </div>
+
+      <!-- HOW IT WORKS -->
+      <div id="panel-how" class="panel space-y-8">
+        <div>
+          <div class="text-xs uppercase section-label text-gray-500 font-semibold mb-4">THE FIVE STEPS OF A DRILL</div>
+
+          <div class="space-y-3">
+            <div class="border border-gray-200 rounded-lg p-5 flex gap-5">
+              <div class="text-2xl font-bold text-green-600 w-8 flex-shrink-0">1</div>
+              <div>
+                <div class="font-semibold mb-1">Fetch the dump</div>
+                <p class="text-sm text-gray-600 leading-relaxed">
+                  Soteria pulls the latest backup from your storage — S3, GCS,
+                  Azure Blob, a local file path. Read-only; we never touch the
+                  source database.
+                </p>
+              </div>
+            </div>
+
+            <div class="border border-gray-200 rounded-lg p-5 flex gap-5">
+              <div class="text-2xl font-bold text-green-600 w-8 flex-shrink-0">2</div>
+              <div>
+                <div class="font-semibold mb-1">Restore into a clean target</div>
+                <p class="text-sm text-gray-600 leading-relaxed">
+                  An isolated, ephemeral database — a fresh Postgres instance,
+                  spun up just for this drill, torn down when it's done. Nothing
+                  touches production.
+                </p>
+              </div>
+            </div>
+
+            <div class="border border-gray-200 rounded-lg p-5 flex gap-5">
+              <div class="text-2xl font-bold text-green-600 w-8 flex-shrink-0">3</div>
+              <div>
+                <div class="font-semibold mb-1">Run your assertions</div>
+                <p class="text-sm text-gray-600 leading-relaxed">
+                  The checks you defined — "users table has at least 10,000
+                  rows," "no NULLs in payments.amount," "schema matches this
+                  fingerprint," "last order is &lt; 26 hours old." Plain SQL.
+                </p>
+              </div>
+            </div>
+
+            <div class="border border-gray-200 rounded-lg p-5 flex gap-5">
+              <div class="text-2xl font-bold text-green-600 w-8 flex-shrink-0">4</div>
+              <div>
+                <div class="font-semibold mb-1">Sign the evidence</div>
+                <p class="text-sm text-gray-600 leading-relaxed">
+                  A PDF report — dump fingerprint, each assertion, pass/fail,
+                  timings — signed with an Ed25519 key. Stored encrypted. Anyone
+                  can verify it later with the public key.
+                </p>
+              </div>
+            </div>
+
+            <div class="border border-gray-200 rounded-lg p-5 flex gap-5">
+              <div class="text-2xl font-bold text-green-600 w-8 flex-shrink-0">5</div>
+              <div>
+                <div class="font-semibold mb-1">Tear down and alert</div>
+                <p class="text-sm text-gray-600 leading-relaxed">
+                  The target database is destroyed. If anything failed, you
+                  hear about it immediately — email, Slack, webhook. If
+                  everything passed, the green PDF lands in your evidence vault.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="text-xs uppercase section-label text-gray-500 font-semibold mb-4">WHAT A DRILL VERIFIES</div>
+          <div class="border border-gray-200 rounded-lg overflow-hidden">
+            <div class="grid grid-cols-3 px-5 py-3 bg-gray-50 border-b border-gray-200 text-xs uppercase section-label text-gray-500 font-semibold">
+              <div>CHECK</div>
+              <div class="col-span-2">WHAT IT CATCHES</div>
+            </div>
+            <div class="divide-y divide-gray-200">
+              <div class="grid grid-cols-3 px-5 py-4 text-sm">
+                <div class="font-semibold">Restorability</div>
+                <div class="col-span-2 text-gray-600">The dump file can actually be loaded into a working database — no truncation, no corruption, no missing dependencies.</div>
+              </div>
+              <div class="grid grid-cols-3 px-5 py-4 text-sm">
+                <div class="font-semibold">Schema integrity</div>
+                <div class="col-span-2 text-gray-600">All expected tables, columns, indexes, and constraints are present and match the fingerprint you set.</div>
+              </div>
+              <div class="grid grid-cols-3 px-5 py-4 text-sm">
+                <div class="font-semibold">Row-count floors</div>
+                <div class="col-span-2 text-gray-600">Critical tables have at least N rows — catches accidental truncation or filtered exports.</div>
+              </div>
+              <div class="grid grid-cols-3 px-5 py-4 text-sm">
+                <div class="font-semibold">Freshness</div>
+                <div class="col-span-2 text-gray-600">The latest timestamp in the dump is recent — catches stale backups silently being uploaded for weeks.</div>
+              </div>
+              <div class="grid grid-cols-3 px-5 py-4 text-sm">
+                <div class="font-semibold">Business invariants</div>
+                <div class="col-span-2 text-gray-600">Your own SQL — "every order has a customer," "no negative balances" — anything you can express as a query.</div>
+              </div>
+              <div class="grid grid-cols-3 px-5 py-4 text-sm">
+                <div class="font-semibold">Restore duration</div>
+                <div class="col-span-2 text-gray-600">How long the restore actually takes — your real RTO, measured not guessed.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SAMPLE SCHEDULE -->
+      <div id="panel-schedule" class="panel space-y-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="bg-green-50 border border-green-100 rounded-lg p-5">
+            <div class="text-xs uppercase section-label text-green-700 font-semibold mb-2">DEFAULT CADENCE</div>
+            <div class="text-3xl font-bold mb-1">Daily</div>
+            <div class="text-xs text-gray-500">automated, no human in the loop</div>
+          </div>
+          <div class="bg-white border border-gray-200 rounded-lg p-5">
+            <div class="text-xs uppercase section-label text-gray-500 font-semibold mb-2">AVG DRILL TIME</div>
+            <div class="text-3xl font-bold mb-1">3-15 min</div>
+            <div class="text-xs text-gray-500">depends on dump size</div>
+          </div>
+          <div class="bg-white border border-gray-200 rounded-lg p-5">
+            <div class="text-xs uppercase section-label text-gray-500 font-semibold mb-2">EVIDENCE RETAINED</div>
+            <div class="text-3xl font-bold mb-1">7 years</div>
+            <div class="text-xs text-gray-500">configurable per database</div>
+          </div>
+        </div>
+
+        <div class="border border-gray-200 rounded-lg overflow-hidden">
+          <div class="px-5 py-4 border-b border-gray-200">
+            <div class="font-semibold">Ramp-up Schedule</div>
+            <div class="text-xs text-gray-500">From "never drilled" to "daily across every production DB" over 8 weeks</div>
+          </div>
+          <div class="grid grid-cols-12 px-5 py-3 bg-gray-50 border-b border-gray-200 text-xs uppercase section-label text-gray-500 font-semibold">
+            <div class="col-span-2">WEEK</div>
+            <div class="col-span-3">CADENCE</div>
+            <div class="col-span-5">PROGRESS</div>
+            <div class="col-span-2 text-right">DBs DRILLED</div>
+          </div>
+          <div class="divide-y divide-gray-200 text-sm">
+
+            <div class="grid grid-cols-12 px-5 py-3 items-center">
+              <div class="col-span-2 font-semibold text-green-600">W1</div>
+              <div class="col-span-3">Manual / ad-hoc</div>
+              <div class="col-span-5"><div class="progress-track"><div class="progress-fill" style="width:10%"></div></div></div>
+              <div class="col-span-2 text-right text-gray-600">1 of 5</div>
+            </div>
+
+            <div class="grid grid-cols-12 px-5 py-3 items-center">
+              <div class="col-span-2 font-semibold text-green-600">W2</div>
+              <div class="col-span-3">Weekly</div>
+              <div class="col-span-5"><div class="progress-track"><div class="progress-fill" style="width:25%"></div></div></div>
+              <div class="col-span-2 text-right text-gray-600">2 of 5</div>
+            </div>
+
+            <div class="grid grid-cols-12 px-5 py-3 items-center">
+              <div class="col-span-2 font-semibold text-green-600">W3</div>
+              <div class="col-span-3">Twice weekly</div>
+              <div class="col-span-5"><div class="progress-track"><div class="progress-fill" style="width:40%"></div></div></div>
+              <div class="col-span-2 text-right text-gray-600">3 of 5</div>
+            </div>
+
+            <div class="grid grid-cols-12 px-5 py-3 items-center">
+              <div class="col-span-2 font-semibold text-green-600">W4</div>
+              <div class="col-span-3">Every 2 days</div>
+              <div class="col-span-5"><div class="progress-track"><div class="progress-fill" style="width:55%"></div></div></div>
+              <div class="col-span-2 text-right text-gray-600">4 of 5</div>
+            </div>
+
+            <div class="grid grid-cols-12 px-5 py-3 items-center">
+              <div class="col-span-2 font-semibold text-green-600">W6</div>
+              <div class="col-span-3">Daily</div>
+              <div class="col-span-5"><div class="progress-track"><div class="progress-fill" style="width:75%"></div></div></div>
+              <div class="col-span-2 text-right text-gray-600">5 of 5</div>
+            </div>
+
+            <div class="grid grid-cols-12 px-5 py-3 items-center bg-green-50">
+              <div class="col-span-2 font-semibold text-green-700">W8</div>
+              <div class="col-span-3">Daily + on-demand</div>
+              <div class="col-span-5"><div class="progress-track"><div class="progress-fill" style="width:100%"></div></div></div>
+              <div class="col-span-2 text-right font-semibold">5 of 5</div>
+            </div>
+
+          </div>
+          <div class="px-5 py-3 bg-gray-50 text-xs text-gray-500 flex justify-between">
+            <div>5 example production databases</div>
+            <div>Steady-state: <span class="font-semibold text-gray-700">~150 drills/month</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WHAT'S INCLUDED -->
+      <div id="panel-included" class="panel">
+        <div class="text-xs uppercase section-label text-green-600 font-semibold mb-4 border-l-2 border-green-500 pl-2">WHAT'S INCLUDED</div>
+
+        <div class="border border-gray-200 rounded-lg overflow-hidden">
+          <div class="divide-y divide-gray-200">
+
+            <div class="grid grid-cols-4 px-5 py-4 gap-4">
+              <div class="font-semibold text-sm">Connector library</div>
+              <div class="col-span-3 text-sm text-gray-600 leading-relaxed">Soteria reads dumps from S3, GCS, Azure Blob, Cloudflare R2, or any local/SFTP path. Postgres first, MySQL and SQL Server next. Add your own format with a small plugin.</div>
+            </div>
+
+            <div class="grid grid-cols-4 px-5 py-4 gap-4">
+              <div class="font-semibold text-sm">Isolated restore runner</div>
+              <div class="col-span-3 text-sm text-gray-600 leading-relaxed">Every drill restores into a fresh, ephemeral target — a one-off Postgres instance on Fly Machines or a sandbox of your choosing — torn down the moment the drill ends. Zero touch on production.</div>
+            </div>
+
+            <div class="grid grid-cols-4 px-5 py-4 gap-4">
+              <div class="font-semibold text-sm">Assertion engine</div>
+              <div class="col-span-3 text-sm text-gray-600 leading-relaxed">Write your business invariants in plain SQL — row counts, freshness checks, foreign-key integrity, anything queryable. Soteria runs them, captures the results, and fails the drill on any red.</div>
+            </div>
+
+            <div class="grid grid-cols-4 px-5 py-4 gap-4">
+              <div class="font-semibold text-sm">Evidence vault</div>
+              <div class="col-span-3 text-sm text-gray-600 leading-relaxed">Every drill produces a signed PDF — dump fingerprint, assertions, pass/fail, timings — Ed25519-signed and AES-GCM encrypted at rest. Verifiable by anyone with the public key, years later.</div>
+            </div>
+
+            <div class="grid grid-cols-4 px-5 py-4 gap-4">
+              <div class="font-semibold text-sm">Scheduling</div>
+              <div class="col-span-3 text-sm text-gray-600 leading-relaxed">Cron-style cadences per database, plus on-demand drills via UI or API. Pause for maintenance windows. Different SLAs for different tiers of data.</div>
+            </div>
+
+            <div class="grid grid-cols-4 px-5 py-4 gap-4">
+              <div class="font-semibold text-sm">Failure alerts</div>
+              <div class="col-span-3 text-sm text-gray-600 leading-relaxed">When a drill fails, your team hears about it — email, Slack, generic webhook — with the exact failing assertion and a link to the evidence PDF. Pages only on real signal.</div>
+            </div>
+
+            <div class="grid grid-cols-4 px-5 py-4 gap-4">
+              <div class="font-semibold text-sm">Audit-ready reports</div>
+              <div class="col-span-3 text-sm text-gray-600 leading-relaxed">A per-database history page: every drill, every assertion result, pass-rate trend lines, RTO over time. Export the evidence pack as a zip for an auditor or a board meeting.</div>
+            </div>
+
+            <div class="grid grid-cols-4 px-5 py-4 gap-4">
+              <div class="font-semibold text-sm">Tamper-evident chain</div>
+              <div class="col-span-3 text-sm text-gray-600 leading-relaxed">Every drill links to the prior one by hash. Deleting a failure leaves a visible gap. The chain is verifiable end-to-end; auditors love it.</div>
+            </div>
+
+            <div class="grid grid-cols-4 px-5 py-4 gap-4">
+              <div class="font-semibold text-sm">Read-only on production</div>
+              <div class="col-span-3 text-sm text-gray-600 leading-relaxed">Soteria never writes to your source database and never needs production credentials beyond the read access to the dump location. The drill happens entirely in the sandbox.</div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="mt-8 border border-gray-200 rounded-lg p-6 bg-gray-50">
+          <div class="text-xs uppercase section-label text-gray-500 font-semibold mb-2">THE ONE-LINE SUMMARY</div>
+          <p class="text-gray-700">
+            A drill turns "we have backups" into "we have signed proof, from this morning, that we can restore."
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="mt-10 text-center text-xs text-gray-400">
+    Soteria — Backup verification you can prove.
+  </div>
+
+</div>
+
+<script>
+  // Top tabs
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.panel');
+  function showTab(name) {
+    tabBtns.forEach(b => {
+      const active = b.dataset.tab === name;
+      b.classList.toggle('tab-active', active);
+      b.classList.toggle('tab-inactive', !active);
+    });
+    panels.forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+  }
+  tabBtns.forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+  showTab('overview');
+
+  // "Why drilling" nested tabs
+  const whyBtns = document.querySelectorAll('.why-tab');
+  const whyPanels = document.querySelectorAll('.why-panel');
+  function showWhy(name) {
+    whyBtns.forEach(b => {
+      const active = b.dataset.why === name;
+      b.classList.toggle('why-tab-active', active);
+      b.classList.toggle('why-tab-inactive', !active);
+    });
+    whyPanels.forEach(p => p.classList.toggle('hidden', p.id !== 'why-' + name));
+  }
+  whyBtns.forEach(b => b.addEventListener('click', () => showWhy(b.dataset.why)));
+</script>
+
+</body>
+</html>
