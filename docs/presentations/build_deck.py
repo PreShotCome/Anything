@@ -108,7 +108,7 @@ def page_chrome(slide, eyebrow, title, slide_num, total):
             'SOTERIA  ·  Backup verification you can prove', size=9, color=ZINC_400)
 
 
-TOTAL = 9
+TOTAL = 10
 
 
 # =========================================================================
@@ -334,11 +334,124 @@ for title, desc in features:
 
 
 # =========================================================================
-# Slide 5 — What's included (capabilities — already covered on 4)
-# Repurpose: Market & business model framing
+# Slide 5 — Failed vs Successful drill
 # =========================================================================
 s = add_slide()
-page_chrome(s, 'Market', 'Every regulated B2B company is a buyer.', 5, TOTAL)
+page_chrome(s, 'Comparison', 'A failed drill vs a successful one.', 5, TOTAL)
+
+RED_100 = RGBColor(0xFE, 0xE2, 0xE2)
+RED_50  = RGBColor(0xFE, 0xF2, 0xF2)
+RED_200 = RGBColor(0xFE, 0xCA, 0xCA)
+
+def drill_card(slide, left, top, w, h, *, status, pill_bg, pill_fg, stats, steps,
+               callout_label, callout_label_color, callout_lines,
+               callout_bg, callout_border):
+    rounded(slide, left, top, w, h, WHITE, line=ZINC_200, radius=0.04)
+    # browser chrome
+    rect(slide, left, top, w, Inches(0.4), ZINC_50)
+    for i, c in enumerate([RGBColor(0xEF, 0x44, 0x44), RGBColor(0xF5, 0x9E, 0x0B), EMERALD]):
+        dot = slide.shapes.add_shape(MSO_SHAPE.OVAL,
+                                     left + Inches(0.15 + i * 0.2),
+                                     top + Inches(0.13),
+                                     Inches(0.12), Inches(0.12))
+        dot.fill.solid(); dot.fill.fore_color.rgb = c; dot.line.fill.background()
+    textbox(slide, left + Inches(0.85), top + Inches(0.1), Inches(5), Inches(0.25),
+            'app.soteria.io/drills/...', size=9, color=ZINC_400, font='Consolas')
+    # header
+    textbox(slide, left + Inches(0.3), top + Inches(0.6), Inches(3.5), Inches(0.3),
+            'production-primary', size=13, bold=True, color=ZINC_900)
+    textbox(slide, left + Inches(0.3), top + Inches(0.9), Inches(4), Inches(0.25),
+            'Daily drill  ·  pg_dump -Fc  ·  4.2 GB', size=9, color=ZINC_500)
+    # status pill
+    pill_left = left + w - Inches(1.4)
+    rounded(slide, pill_left, top + Inches(0.6), Inches(1.15), Inches(0.35), pill_bg, radius=0.5)
+    textbox(slide, pill_left, top + Inches(0.63), Inches(1.15), Inches(0.3),
+            '● ' + status, size=10, bold=True, color=pill_fg,
+            align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+    # 4 stat tiles
+    tile_top = top + Inches(1.4)
+    tile_h   = Inches(0.85)
+    tile_gap = Inches(0.1)
+    tile_w   = (w - Inches(0.6) - tile_gap * 3) / 4
+    for i, (lbl, val, val_color) in enumerate(stats):
+        tx = left + Inches(0.3) + (tile_w + tile_gap) * i
+        rounded(slide, tx, tile_top, tile_w, tile_h, ZINC_50, line=ZINC_200, radius=0.08)
+        textbox(slide, tx + Inches(0.1), tile_top + Inches(0.1), tile_w - Inches(0.2), Inches(0.25),
+                lbl.upper(), size=7, bold=True, color=ZINC_500)
+        textbox(slide, tx + Inches(0.1), tile_top + Inches(0.32), tile_w - Inches(0.2), Inches(0.45),
+                val, size=12, bold=True, color=val_color)
+    # step pills
+    sp_top = tile_top + tile_h + Inches(0.2)
+    px = left + Inches(0.3)
+    for name, ok in steps:
+        bg = EMERALD_50 if ok else RED_100
+        fg = EMERALD_700 if ok else RED_700
+        mark = '✓' if ok else '✗'
+        rounded(slide, px, sp_top, Inches(0.85), Inches(0.3), bg, radius=0.5)
+        textbox(slide, px, sp_top + Inches(0.02), Inches(0.85), Inches(0.26),
+                mark + ' ' + name, size=8, color=fg,
+                align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+        px += Inches(0.95)
+    # callout at bottom
+    co_top = sp_top + Inches(0.5)
+    co_h   = top + h - co_top - Inches(0.2)
+    rounded(slide, left + Inches(0.3), co_top, w - Inches(0.6), co_h,
+            callout_bg, line=callout_border, radius=0.05)
+    textbox(slide, left + Inches(0.45), co_top + Inches(0.12), w - Inches(0.9), Inches(0.3),
+            callout_label, size=9, bold=True, color=callout_label_color)
+    line_y = co_top + Inches(0.42)
+    for line in callout_lines:
+        textbox(slide, left + Inches(0.45), line_y, w - Inches(0.9), Inches(0.3),
+                line, size=10, color=ZINC_700)
+        line_y += Inches(0.28)
+
+card_top = Inches(1.65)
+card_h   = Inches(4.95)
+card_w   = Inches(6.05)
+card_gap = Inches(0.15)
+
+drill_card(s, Inches(0.6), card_top, card_w, card_h,
+           status='failed', pill_bg=RED_100, pill_fg=RED_700,
+           stats=[('Restore time', '14m 02s', AMBER_700),
+                  ('Rows verified', '3.8M', RED_700),
+                  ('Assertions',    '4 / 6',  RED_700),
+                  ('Evidence',      'Signed', ZINC_900)],
+           steps=[('provision', True), ('fetch', True), ('restore', True),
+                  ('assert', False), ('report', True), ('teardown', True)],
+           callout_label='FAILED ASSERTIONS  ·  ALERTED 04:11 UTC',
+           callout_label_color=RED_700,
+           callout_lines=[
+               '• orders.created_at freshness — latest row is 5d 11h old (max 26h)',
+               '• payments.amount — 421 NULLs in a NOT NULL column',
+               '• Paged oncall@yours.co and #ops Slack — broken backup, before the outage.'],
+           callout_bg=RED_50, callout_border=RED_200)
+
+drill_card(s, Inches(0.6) + card_w + card_gap, card_top, card_w, card_h,
+           status='passed', pill_bg=EMERALD_50, pill_fg=EMERALD_700,
+           stats=[('Restore time', '2m 14s', EMERALD_700),
+                  ('Rows verified', '4.2M',  ZINC_900),
+                  ('Assertions',    '6 / 6', EMERALD_700),
+                  ('Evidence',      'Signed', ZINC_900)],
+           steps=[('provision', True), ('fetch', True), ('restore', True),
+                  ('assert', True), ('report', True), ('teardown', True)],
+           callout_label='ALL 6 ASSERTIONS PASSED  ·  SIGNED AND ARCHIVED',
+           callout_label_color=EMERALD_700,
+           callout_lines=[
+               '• Restore time within SLO. Fresh data within window.',
+               '• Schema match. Row counts within tolerance.',
+               '• Ed25519-signed PDF in the evidence vault. No human in the loop.'],
+           callout_bg=EMERALD_50, callout_border=EMERALD)
+
+textbox(s, Inches(0.6), Inches(6.75), Inches(12.2), Inches(0.4),
+        'The difference: one of these gets fixed Tuesday morning. The other becomes an incident.',
+        size=13, bold=True, color=ZINC_900, align=PP_ALIGN.CENTER)
+
+
+# =========================================================================
+# Slide 6 — Market & business model
+# =========================================================================
+s = add_slide()
+page_chrome(s, 'Market', 'Every regulated B2B company is a buyer.', 6, TOTAL)
 
 # Three buyer columns
 col_top = Inches(1.7)
@@ -384,10 +497,10 @@ textbox(s, Inches(0.6), Inches(6.6), Inches(12.2), Inches(0.4),
 
 
 # =========================================================================
-# Slide 6 — Pricing
+# Slide 7 — Pricing
 # =========================================================================
 s = add_slide()
-page_chrome(s, 'Pricing', 'Pricing by how often you verify.', 6, TOTAL)
+page_chrome(s, 'Pricing', 'Pricing by how often you verify.', 7, TOTAL)
 
 # Three pricing cards
 def pricing_card(slide, left, top, w, h, name, price, period, cadence_label, cadence_value,
@@ -452,10 +565,10 @@ textbox(s, Inches(0.6), Inches(7.05), Inches(12), Inches(0.3),
 
 
 # =========================================================================
-# Slide 7 — Where we stand today
+# Slide 8 — Where we stand today
 # =========================================================================
 s = add_slide()
-page_chrome(s, 'Status', 'Where we stand today.', 7, TOTAL)
+page_chrome(s, 'Status', 'Where we stand today.', 8, TOTAL)
 
 # Status pills row
 def status_pill(slide, left, top, w, h, status, label, color_bg, color_fg):
@@ -513,10 +626,10 @@ section_card(s, Inches(6.75), Inches(3.05), Inches(6.05), Inches(4.0),
 
 
 # =========================================================================
-# Slide 8 — Roadmap / what's next
+# Slide 9 — Roadmap / what's next
 # =========================================================================
 s = add_slide()
-page_chrome(s, 'Plan', 'The next 90 days.', 8, TOTAL)
+page_chrome(s, 'Plan', 'The next 90 days.', 9, TOTAL)
 
 # Timeline boxes — 30/60/90
 def timeline_card(slide, left, top, w, h, when, title, items, color):
@@ -553,7 +666,7 @@ timeline_card(s, tl_left + (tl_w + tl_gap) * 2, tl_top, tl_w, tl_h, '60 – 90 D
 
 
 # =========================================================================
-# Slide 9 — Contact / Q&A
+# Slide 10 — Contact / Q&A
 # =========================================================================
 s = add_slide()
 rect(s, Inches(0), Inches(0), prs.slide_width, prs.slide_height, BRAND_900)
