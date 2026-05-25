@@ -167,17 +167,57 @@ func (s *Store) SetStripeCustomerID(ctx context.Context, accountID uuid.UUID, cu
 }
 
 // SyncSubscription updates an account's plan and subscription state from a
-// Stripe webhook, matched by Stripe customer ID. An unknown customer is a
-// no-op — the event is for an account this server doesn't hold.
-func (s *Store) SyncSubscription(ctx context.Context, customerID, subscriptionID, status, plan string) error {
+// Stripe webhook, matched by Stripe customer ID. eventCreated is the Stripe
+// event.created — older-than-current rows are skipped so out-of-order
+// deliveries cannot resurrect a canceled account by overwriting newer state.
+// An unknown customer is a no-op (the event is for an account this server
+// doesn't hold).
+func (s *Store) SyncSubscription(ctx context.Context, customerID, subscriptionID, status, plan string, eventCreated time.Time) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE accounts
 		   SET plan = $2,
 		       stripe_subscription_id = NULLIF($3, ''),
-		       subscription_status    = NULLIF($4, '')
+		       subscription_status    = NULLIF($4, ''),
+		       subscription_status_updated_at = $5
 		 WHERE stripe_customer_id = $1
-	`, customerID, plan, subscriptionID, status)
+		   AND (subscription_status_updated_at IS NULL
+		        OR subscription_status_updated_at <= $5)
+	`, customerID, plan, subscriptionID, status, eventCreated)
 	return err
+}
+
+// HandleSubscriptionCanceled is the deleted-subscription path: drop the
+// account back to the trial tier, clear the Stripe subscription ID, mark
+// status canceled, AND extend trial_ends_at to a short grace window so the
+// cancellation does not instantly lock the account out — the owner has time
+// to re-subscribe through Checkout (which now allows it because
+// stripe_subscription_id is NULL again).
+func (s *Store) HandleSubscriptionCanceled(ctx context.Context, customerID string, eventCreated, graceUntil time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE accounts
+		   SET plan                          = 'trial',
+		       stripe_subscription_id        = NULL,
+		       subscription_status           = 'canceled',
+		       subscription_status_updated_at = $2,
+		       trial_ends_at                 = $3
+		 WHERE stripe_customer_id = $1
+		   AND (subscription_status_updated_at IS NULL
+		        OR subscription_status_updated_at <= $2)
+	`, customerID, eventCreated, graceUntil)
+	return err
+}
+
+// RecordStripeEvent inserts a Stripe event ID into the dedup table. Returns
+// true on first-seen, false on duplicate. Stripe retries 5xx for ~3 days and
+// may also replay older events; this is the gate that makes the webhook
+// handler idempotent.
+func (s *Store) RecordStripeEvent(ctx context.Context, eventID string) (bool, error) {
+	tag, err := s.pool.Exec(ctx,
+		`INSERT INTO stripe_events (event_id) VALUES ($1) ON CONFLICT DO NOTHING`, eventID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // ListAccountsForUser returns every account the user is a member of, with

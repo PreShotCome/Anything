@@ -92,6 +92,11 @@ func (c *Cipher) ShredAccount(ctx context.Context, accountID uuid.UUID) error {
 
 // accountDEK loads (or, when create is set, lazily mints) an account's
 // data-encryption key, unwrapped and ready as an AEAD.
+//
+// The wrapped DEK is sealed with the account's UUID as AAD: an attacker
+// who can swap a wrapped_dek row between two accounts in the database can
+// no longer have it decrypt successfully — the AAD mismatch on Open fails
+// the GCM tag check.
 func (c *Cipher) accountDEK(ctx context.Context, accountID uuid.UUID, create bool) (cipher.AEAD, error) {
 	wrapped, err := c.loadWrappedDEK(ctx, accountID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -104,7 +109,8 @@ func (c *Cipher) accountDEK(ctx context.Context, accountID uuid.UUID, create boo
 	} else if err != nil {
 		return nil, err
 	}
-	raw, err := open(c.master, wrapped)
+	id := accountID
+	raw, err := openAAD(c.master, wrapped, id[:])
 	if err != nil {
 		return nil, fmt.Errorf("evidence: unwrap account key: %w", err)
 	}
@@ -126,7 +132,8 @@ func (c *Cipher) mintDEK(ctx context.Context, accountID uuid.UUID) ([]byte, erro
 	if _, err := rand.Read(raw); err != nil {
 		return nil, err
 	}
-	wrapped, err := seal(c.master, raw)
+	id := accountID
+	wrapped, err := sealAAD(c.master, raw, id[:])
 	if err != nil {
 		return nil, err
 	}
@@ -149,18 +156,30 @@ func newAEAD(key []byte) (cipher.AEAD, error) {
 
 // seal encrypts plaintext, returning nonce||ciphertext.
 func seal(aead cipher.AEAD, plaintext []byte) ([]byte, error) {
+	return sealAAD(aead, plaintext, nil)
+}
+
+// sealAAD encrypts plaintext with the given AAD, returning nonce||ciphertext.
+// AAD binds the ciphertext to that context (e.g. account UUID); decrypt with
+// the same AAD or the GCM tag check fails.
+func sealAAD(aead cipher.AEAD, plaintext, aad []byte) ([]byte, error) {
 	nonce := make([]byte, aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
 	}
-	return aead.Seal(nonce, nonce, plaintext, nil), nil
+	return aead.Seal(nonce, nonce, plaintext, aad), nil
 }
 
 // open reverses seal.
 func open(aead cipher.AEAD, blob []byte) ([]byte, error) {
+	return openAAD(aead, blob, nil)
+}
+
+// openAAD reverses sealAAD; the AAD must match what was used during seal.
+func openAAD(aead cipher.AEAD, blob, aad []byte) ([]byte, error) {
 	if len(blob) < aead.NonceSize() {
 		return nil, errors.New("evidence: ciphertext too short")
 	}
 	nonce, ct := blob[:aead.NonceSize()], blob[aead.NonceSize():]
-	return aead.Open(nil, nonce, ct, nil)
+	return aead.Open(nil, nonce, ct, aad)
 }

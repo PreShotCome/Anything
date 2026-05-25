@@ -67,20 +67,24 @@ func parseSignatureHeader(h string) (ts string, v1 []string) {
 // WebhookEvent is the slice of a Stripe event the billing webhook handler
 // acts on.
 type WebhookEvent struct {
+	ID             string    // Stripe event.id — primary key in stripe_events
+	Created        time.Time // Stripe event.created — used to reject out-of-order events
 	Type           string
 	CustomerID     string
 	SubscriptionID string
-	Status         string // Stripe subscription status
-	PriceID        string
+	Status         string   // Stripe subscription status
+	PriceIDs       []string // all subscription items' price IDs (order from Stripe is indeterminate)
 }
 
 // ParseWebhook extracts the fields the app needs from a Stripe event body.
 // It understands customer.subscription.* events; other event types parse to
-// a WebhookEvent with just Type set, which the handler then ignores.
+// a WebhookEvent with just ID/Created/Type set, which the handler ignores.
 func ParseWebhook(payload []byte) (WebhookEvent, error) {
 	var env struct {
-		Type string `json:"type"`
-		Data struct {
+		ID      string `json:"id"`
+		Created int64  `json:"created"`
+		Type    string `json:"type"`
+		Data    struct {
 			Object struct {
 				ID       string `json:"id"`
 				Customer string `json:"customer"`
@@ -99,15 +103,32 @@ func ParseWebhook(payload []byte) (WebhookEvent, error) {
 		return WebhookEvent{}, fmt.Errorf("stripe: decode webhook: %w", err)
 	}
 	ev := WebhookEvent{
+		ID:             env.ID,
+		Created:        time.Unix(env.Created, 0).UTC(),
 		Type:           env.Type,
 		CustomerID:     env.Data.Object.Customer,
 		SubscriptionID: env.Data.Object.ID,
 		Status:         env.Data.Object.Status,
 	}
-	if len(env.Data.Object.Items.Data) > 0 {
-		ev.PriceID = env.Data.Object.Items.Data[0].Price.ID
+	for _, item := range env.Data.Object.Items.Data {
+		if item.Price.ID != "" {
+			ev.PriceIDs = append(ev.PriceIDs, item.Price.ID)
+		}
 	}
 	return ev, nil
+}
+
+// SubscriptionActive reports whether a Stripe subscription status indicates
+// the customer should keep their paid plan. past_due, unpaid, canceled,
+// incomplete*, and paused all return false — the customer drops back to the
+// trial tier until Stripe sends an event that restores them.
+func SubscriptionActive(status string) bool {
+	switch status {
+	case "active", "trialing":
+		return true
+	default:
+		return false
+	}
 }
 
 // IsSubscriptionEvent reports whether an event type is one the handler syncs

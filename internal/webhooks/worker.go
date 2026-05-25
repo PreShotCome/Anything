@@ -107,14 +107,23 @@ func (w *DeliverWorker) Work(ctx context.Context, job *river.Job[DeliverArgs]) e
 	endpoint, err := w.Store.GetEndpointByID(ctx, d.EndpointID)
 	if err != nil {
 		// Endpoint deleted between enqueue and delivery — mark failed and
-		// stop retrying.
-		_ = w.Store.RecordAttempt(ctx, d.ID, StatusFailed, 0, "endpoint no longer exists")
+		// stop retrying. If RecordAttempt itself fails, return an error so
+		// River retries: leaving the row stuck in pending is worse than a
+		// duplicate "endpoint missing" attempt entry.
+		if recErr := w.Store.RecordAttempt(ctx, d.ID, StatusFailed, 0, "endpoint no longer exists"); recErr != nil {
+			return fmt.Errorf("record attempt (endpoint gone): %w", recErr)
+		}
 		return nil
 	}
 
 	statusCode, attemptErr := w.post(ctx, endpoint, d)
 	if attemptErr == nil && statusCode >= 200 && statusCode < 300 {
-		_ = w.Store.RecordAttempt(ctx, d.ID, StatusDelivered, statusCode, "")
+		// HTTP delivery succeeded. If we cannot record the attempt the row
+		// is stuck on the prior status; return an error so River retries.
+		// Receivers must be idempotent (signed X-RestoreDrill-Delivery ID).
+		if recErr := w.Store.RecordAttempt(ctx, d.ID, StatusDelivered, statusCode, ""); recErr != nil {
+			return fmt.Errorf("record attempt (delivered, will retry): %w", recErr)
+		}
 		w.recordOutcome("delivered")
 		return nil
 	}
@@ -125,7 +134,9 @@ func (w *DeliverWorker) Work(ctx context.Context, job *river.Job[DeliverArgs]) e
 	} else {
 		reason = fmt.Sprintf("non-2xx response: %d", statusCode)
 	}
-	_ = w.Store.RecordAttempt(ctx, d.ID, StatusFailed, statusCode, reason)
+	if recErr := w.Store.RecordAttempt(ctx, d.ID, StatusFailed, statusCode, reason); recErr != nil {
+		return fmt.Errorf("record attempt (failed, will retry): %w", recErr)
+	}
 	w.recordOutcome("failed")
 
 	// Return an error so River retries (up to its MaxAttempts). The status

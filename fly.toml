@@ -35,8 +35,13 @@ primary_region = "sea"
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
-  auto_start_machines = true
+  # Single-machine deployment: the evidence volume below is pinned to this
+  # machine, so a second instance would either fail to start or write
+  # evidence to a different volume that the first machine cannot read. To
+  # scale beyond one machine, move evidence to S3/R2 (set EVIDENCE_S3_*
+  # — see docs/runbooks/s3.md) and then flip auto_start_machines = true.
+  auto_stop_machines = "off"
+  auto_start_machines = false
   min_machines_running = 1
 
   [[http_service.checks]]

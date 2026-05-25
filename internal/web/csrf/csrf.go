@@ -75,7 +75,8 @@ func (p *Protector) cookieName() string {
 func (p *Protector) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := p.readCookie(r)
-		if token == "" {
+		cookieMissing := token == ""
+		if cookieMissing {
 			token = newToken()
 			p.setCookie(w, token)
 		}
@@ -83,11 +84,18 @@ func (p *Protector) Middleware(next http.Handler) http.Handler {
 		r = r.WithContext(ctx)
 
 		if isUnsafe(r.Method) && !p.isExempt(r.URL.Path) {
+			// If the cookie was just minted on this request, there is no token
+			// the client could possibly know to submit — comparing against the
+			// fresh one is guaranteed to 403 every first-POST-after-cookie-loss.
+			// Reject explicitly so the user gets a "reload and retry" message
+			// rather than a silent comparison failure.
+			if cookieMissing {
+				http.Error(w, "Your session token is missing or expired — reload the page and try again.",
+					http.StatusForbidden)
+				return
+			}
 			submitted := r.PostFormValue(FieldName)
 			if submitted == "" || subtle.ConstantTimeCompare([]byte(submitted), []byte(token)) != 1 {
-				// A missing/stale token most often means the cookie expired or
-				// was cleared — a fresh one was just set above, so a reload of
-				// the form recovers. Say so rather than a bare "invalid".
 				http.Error(w, "Your session token is missing or expired — reload the page and try again.",
 					http.StatusForbidden)
 				return

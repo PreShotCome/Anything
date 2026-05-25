@@ -46,24 +46,38 @@ func TestVerifyWebhook(t *testing.T) {
 
 func TestParseWebhook(t *testing.T) {
 	body := []byte(`{
+		"id": "evt_abc", "created": 1716595200,
 		"type": "customer.subscription.updated",
 		"data": {"object": {
 			"id": "sub_123", "customer": "cus_456", "status": "active",
-			"items": {"data": [{"price": {"id": "price_pro"}}]}
+			"items": {"data": [{"price": {"id": "price_seat_addon"}}, {"price": {"id": "price_pro"}}]}
 		}}
 	}`)
 	ev, err := ParseWebhook(body)
 	if err != nil {
 		t.Fatalf("ParseWebhook: %v", err)
 	}
+	if ev.ID != "evt_abc" || ev.Created.IsZero() {
+		t.Fatalf("ParseWebhook: ID or Created missing, got %+v", ev)
+	}
 	if ev.Type != "customer.subscription.updated" || ev.CustomerID != "cus_456" ||
-		ev.SubscriptionID != "sub_123" || ev.Status != "active" || ev.PriceID != "price_pro" {
+		ev.SubscriptionID != "sub_123" || ev.Status != "active" {
 		t.Fatalf("ParseWebhook returned %+v", ev)
+	}
+	// All items, in order, so the handler can pick the one matching a known plan.
+	if len(ev.PriceIDs) != 2 || ev.PriceIDs[0] != "price_seat_addon" || ev.PriceIDs[1] != "price_pro" {
+		t.Fatalf("PriceIDs: got %v, want [price_seat_addon, price_pro]", ev.PriceIDs)
 	}
 	if !IsSubscriptionEvent(ev.Type) {
 		t.Fatal("subscription.updated should be a subscription event")
 	}
 	if IsSubscriptionEvent("invoice.paid") {
 		t.Fatal("invoice.paid is not a subscription event")
+	}
+	if !SubscriptionActive("active") || !SubscriptionActive("trialing") {
+		t.Fatal("active/trialing must count as active")
+	}
+	if SubscriptionActive("past_due") || SubscriptionActive("canceled") {
+		t.Fatal("past_due/canceled must NOT count as active")
 	}
 }

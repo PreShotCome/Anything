@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/preshotcome/anything/internal/account"
 	"github.com/preshotcome/anything/internal/apikey"
 	"github.com/preshotcome/anything/internal/auth"
 )
@@ -81,17 +82,35 @@ func (h *Handlers) v1Router() http.Handler {
 
 	// State-changing endpoints require an Idempotency-Key. The scope check
 	// runs before idempotency so a 403 is never captured and replayed.
+	// Trial-gating mirrors the browser routes: a lapsed-trial account can
+	// still read via the API but cannot create resources or fire drills.
 	r.Group(func(r chi.Router) {
 		r.Use(h.v1RequireScope(apikey.ScopeDatabasesWrite))
+		r.Use(h.v1RequireUnlapsedTrial)
 		r.Use(h.v1Idempotency)
 		r.Post("/databases", h.v1CreateDatabase)
 	})
 	r.Group(func(r chi.Router) {
 		r.Use(h.v1RequireScope(apikey.ScopeDrillsWrite))
+		r.Use(h.v1RequireUnlapsedTrial)
 		r.Use(h.v1Idempotency)
 		r.Post("/drills", h.v1CreateDrill)
 	})
 	return r
+}
+
+// v1RequireUnlapsedTrial blocks write endpoints when the API key's account
+// is past its trial window without a subscription. Returns 402 with the
+// JSON envelope so a non-browser client can surface the upgrade prompt.
+func (h *Handlers) v1RequireUnlapsedTrial(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if acct, ok := auth.CurrentAccountFromContext(r.Context()); ok && account.TrialLapsed(*acct) {
+			writeAPIError(w, http.StatusPaymentRequired, "trial_expired",
+				"trial has ended — subscribe to continue using the API")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // v1RequireScope rejects a request whose API key lacks the given scope.
