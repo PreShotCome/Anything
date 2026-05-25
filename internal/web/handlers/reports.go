@@ -26,8 +26,18 @@ func (h *Handlers) reports(w http.ResponseWriter, r *http.Request) {
 	// yields four buckets, two of which are partial and incomparable).
 	since := monthsAgoUTC(time.Now(), months)
 
-	monthly, _ := h.drills.MonthlyStats(r.Context(), lc.Account.ID, since)
-	dbs, _ := h.drills.DatabaseStats(r.Context(), lc.Account.ID, since)
+	monthly, err := h.drills.MonthlyStats(r.Context(), lc.Account.ID, since)
+	if err != nil {
+		h.logger().Error("reports: monthly stats failed", "err", err, "account_id", lc.Account.ID)
+		http.Error(w, "report unavailable — please try again in a moment", http.StatusInternalServerError)
+		return
+	}
+	dbs, err := h.drills.DatabaseStats(r.Context(), lc.Account.ID, since)
+	if err != nil {
+		h.logger().Error("reports: database stats failed", "err", err, "account_id", lc.Account.ID)
+		http.Error(w, "report unavailable — please try again in a moment", http.StatusInternalServerError)
+		return
+	}
 
 	view := templates.ReportsView{
 		Ctx:          lc,

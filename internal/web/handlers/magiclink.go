@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -55,15 +56,25 @@ func (h *Handlers) magicLinkRequest(w http.ResponseWriter, r *http.Request) {
 		SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL
 	`, email).Scan(&userID)
 	if err == nil {
-		if token, tErr := h.sessions.CreateMagicLinkToken(r.Context(), userID); tErr != nil {
-			h.logger().Warn("magic link token failed", "user_id", userID, "err", tErr)
-		} else {
+		// Token creation + email send can take hundreds of milliseconds
+		// (Postmark round-trip) — measurably longer than the no-op
+		// branch. Kick it off in the background so a timing-side-channel
+		// can't distinguish registered from unregistered addresses.
+		// Detach from the request context: the goroutine outlives the
+		// HTTP response by design.
+		go func(userID uuid.UUID, email string) {
+			ctx := context.WithoutCancel(r.Context())
+			token, tErr := h.sessions.CreateMagicLinkToken(ctx, userID)
+			if tErr != nil {
+				h.logger().Warn("magic link token failed", "user_id", userID, "err", tErr)
+				return
+			}
 			link := h.absoluteURL(r, "/login/magic/"+token)
-			if mErr := h.mailer.Send(r.Context(), mail.MagicLinkMessage(email, link)); mErr != nil &&
+			if mErr := h.mailer.Send(ctx, mail.MagicLinkMessage(email, link)); mErr != nil &&
 				!errors.Is(mErr, mail.ErrSuppressed) {
 				h.logger().Warn("magic link email failed", "to", email, "err", mErr)
 			}
-		}
+		}(userID, email)
 	}
 	// Always the same confirmation — no account enumeration.
 	render(w, r, templates.MagicLinkSent(email))

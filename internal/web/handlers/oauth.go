@@ -3,6 +3,8 @@ package handlers
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -18,7 +20,43 @@ import (
 	"github.com/preshotcome/anything/internal/oauth"
 )
 
-const oauthStateCookie = "so_oauth_state"
+// oauthStateValue is what we bake into the state cookie: the CSRF state
+// AND the PKCE code_verifier, JSON-encoded and base64-wrapped so a cookie
+// reader sees an opaque string. Carrying both in the same cookie keeps
+// the two pieces of one flow bound together.
+type oauthStateValue struct {
+	State    string `json:"s"`
+	Verifier string `json:"v"`
+}
+
+func encodeOAuthState(v oauthStateValue) (string, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+func decodeOAuthState(s string) (oauthStateValue, error) {
+	var v oauthStateValue
+	b, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return v, err
+	}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return v, err
+	}
+	return v, nil
+}
+
+// oauthStateCookie carries the CSRF state for the social-login flow.
+// staffOAuthStateCookie carries it for the admin step-up flow. Distinct
+// names so two concurrent tabs (one signup, one staff verify) cannot
+// overwrite each other's state and trick the callback dispatcher.
+const (
+	oauthStateCookie      = "so_oauth_state"
+	staffOAuthStateCookie = "so_staff_oauth_state"
+)
 
 // oauthStart begins a social-login flow: it mints a CSRF state, stashes it in
 // a short-lived cookie, and redirects to the provider's consent screen.
@@ -34,11 +72,23 @@ func (h *Handlers) oauthStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not start sign-in", http.StatusInternalServerError)
 		return
 	}
+	verifier, err := oauth.PKCEVerifier()
+	if err != nil {
+		http.Error(w, "could not start sign-in", http.StatusInternalServerError)
+		return
+	}
+	cookieValue, err := encodeOAuthState(oauthStateValue{State: state, Verifier: verifier})
+	if err != nil {
+		http.Error(w, "could not start sign-in", http.StatusInternalServerError)
+		return
+	}
 	http.SetCookie(w, &http.Cookie{
-		Name: oauthStateCookie, Value: state, Path: "/",
+		Name: oauthStateCookie, Value: cookieValue, Path: "/",
 		MaxAge: 600, HttpOnly: true, Secure: h.secureCookies, SameSite: http.SameSiteLaxMode,
 	})
-	http.Redirect(w, r, prov.AuthCodeURL(state, h.oauthCallbackURL(r, provName)), http.StatusSeeOther)
+	http.Redirect(w, r,
+		prov.AuthCodeURL(state, oauth.PKCEChallenge(verifier), h.oauthCallbackURL(r, provName)),
+		http.StatusSeeOther)
 }
 
 // oauthCallback completes a social-login flow: it verifies the CSRF state,
@@ -52,21 +102,35 @@ func (h *Handlers) oauthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// CSRF: the state echoed back must match the cookie set at /start.
-	cookie, err := r.Cookie(oauthStateCookie)
+	// Pick which start-flow cookie holds the expected state — staff-SSO
+	// step-ups use a distinct cookie name so they can't be overwritten by
+	// a parallel social-login tab.
+	isStaffFlow := false
+	stateCookieName := oauthStateCookie
+	if c, err := r.Cookie(staffSSOCookie); err == nil && c.Value == "1" {
+		isStaffFlow = true
+		stateCookieName = staffOAuthStateCookie
+	}
+	cookie, err := r.Cookie(stateCookieName)
 	state := r.URL.Query().Get("state")
-	if err != nil || cookie.Value == "" || state == "" ||
-		subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 {
+	if err != nil || cookie.Value == "" || state == "" {
 		http.Error(w, "invalid or expired sign-in state — please try again", http.StatusBadRequest)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: oauthStateCookie, Value: "", Path: "/", MaxAge: -1})
+	stored, err := decodeOAuthState(cookie.Value)
+	if err != nil || stored.State == "" || stored.Verifier == "" ||
+		subtle.ConstantTimeCompare([]byte(stored.State), []byte(state)) != 1 {
+		http.Error(w, "invalid or expired sign-in state — please try again", http.StatusBadRequest)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: stateCookieName, Value: "", Path: "/", MaxAge: -1})
 
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		http.Error(w, "sign-in was cancelled", http.StatusBadRequest)
 		return
 	}
-	id, err := prov.Identity(r.Context(), code, h.oauthCallbackURL(r, provName))
+	id, err := prov.Identity(r.Context(), code, stored.Verifier, h.oauthCallbackURL(r, provName))
 	if err != nil {
 		h.logger().Warn("oauth identity failed", "provider", provName, "err", err)
 		http.Error(w, "could not complete sign-in with "+provName, http.StatusBadGateway)
@@ -79,7 +143,7 @@ func (h *Handlers) oauthCallback(w http.ResponseWriter, r *http.Request) {
 
 	// A staff SSO step-up re-proves identity for an already-signed-in staff
 	// user — it is not a normal sign-in, so it branches off here.
-	if c, err := r.Cookie(staffSSOCookie); err == nil && c.Value == "1" {
+	if isStaffFlow {
 		http.SetCookie(w, &http.Cookie{Name: staffSSOCookie, Value: "", Path: "/", MaxAge: -1})
 		h.completeStaffSSO(w, r, provName, id.Email)
 		return
@@ -134,12 +198,22 @@ func (h *Handlers) oauthCallbackURL(r *http.Request, provName string) string {
 }
 
 // completeStaffSSO finishes an admin-panel step-up. The SSO identity must
-// belong to the already-signed-in staff user and still be on the staff
-// allowlist — so a step-up doubles as a live re-check of staff eligibility.
+// belong to the already-signed-in staff user, still be on the staff
+// allowlist, AND still hold the is_staff flag in the database — checked
+// live, not from the session cache, so a demotion between cookie issuance
+// and step-up immediately revokes access.
 func (h *Handlers) completeStaffSSO(w http.ResponseWriter, r *http.Request, provName, ssoEmail string) {
 	u, ok := auth.FromContext(r.Context())
 	ssoEmail = strings.ToLower(strings.TrimSpace(ssoEmail))
-	if !ok || !u.IsStaff || !strings.EqualFold(u.Email, ssoEmail) || !h.staffEmails[ssoEmail] {
+	if !ok || !strings.EqualFold(u.Email, ssoEmail) || !h.staffEmails[ssoEmail] {
+		http.Error(w, "staff verification failed — that account is not an authorised staff identity",
+			http.StatusForbidden)
+		return
+	}
+	var liveIsStaff bool
+	if err := h.pool.QueryRow(r.Context(),
+		`SELECT is_staff FROM users WHERE id = $1 AND deleted_at IS NULL`,
+		u.ID).Scan(&liveIsStaff); err != nil || !liveIsStaff {
 		http.Error(w, "staff verification failed — that account is not an authorised staff identity",
 			http.StatusForbidden)
 		return

@@ -35,11 +35,26 @@ func TestRegistryRegistersOnlyConfigured(t *testing.T) {
 
 func TestAuthCodeURL(t *testing.T) {
 	p, _ := NewRegistry("gid", "gsecret", "", "").Get("google")
-	u := p.AuthCodeURL("state-xyz", "https://app.example/auth/google/callback")
-	for _, want := range []string{"client_id=gid", "state=state-xyz", "response_type=code", "redirect_uri=https"} {
+	verifier, _ := PKCEVerifier()
+	u := p.AuthCodeURL("state-xyz", PKCEChallenge(verifier), "https://app.example/auth/google/callback")
+	for _, want := range []string{
+		"client_id=gid", "state=state-xyz", "response_type=code",
+		"redirect_uri=https", "code_challenge=", "code_challenge_method=S256",
+	} {
 		if !strings.Contains(u, want) {
 			t.Errorf("AuthCodeURL missing %q: %s", want, u)
 		}
+	}
+}
+
+func TestPKCEChallengeDeterministic(t *testing.T) {
+	v, _ := PKCEVerifier()
+	if PKCEChallenge(v) != PKCEChallenge(v) {
+		t.Fatal("PKCEChallenge must be deterministic for a given verifier")
+	}
+	v2, _ := PKCEVerifier()
+	if v == v2 {
+		t.Fatal("PKCEVerifier must yield distinct values per call")
 	}
 }
 
@@ -61,7 +76,7 @@ func TestIdentityGoogle(t *testing.T) {
 		name: "google", tokenURL: srv.URL + "/token", emailURL: srv.URL + "/userinfo",
 		http: srv.Client(), parseEmail: parseGoogleEmail,
 	}
-	id, err := p.Identity(context.Background(), "code1", "https://app/cb")
+	id, err := p.Identity(context.Background(), "code1", "verifier1", "https://app/cb")
 	if err != nil {
 		t.Fatalf("Identity: %v", err)
 	}
@@ -88,7 +103,7 @@ func TestIdentityGitHubPicksPrimaryEmail(t *testing.T) {
 		name: "github", tokenURL: srv.URL + "/token", emailURL: srv.URL + "/emails",
 		http: srv.Client(), parseEmail: parseGitHubEmail,
 	}
-	id, err := p.Identity(context.Background(), "c", "https://app/cb")
+	id, err := p.Identity(context.Background(), "c", "v", "https://app/cb")
 	if err != nil {
 		t.Fatalf("Identity: %v", err)
 	}

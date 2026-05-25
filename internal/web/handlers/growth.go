@@ -9,11 +9,29 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// robotsTxt disallows indexing the application. The app is private; the
-// marketing site (separate repo) is what search engines should crawl.
+// robotsTxt lets crawlers index the public marketing surface and keeps them
+// off the private app + webhook receivers. Order matters: Allow rules
+// override the trailing Disallow.
 func (h *Handlers) robotsTxt(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write([]byte("User-agent: *\nDisallow: /\n"))
+	_, _ = w.Write([]byte(`User-agent: *
+Allow: /$
+Allow: /pricing
+Allow: /how-it-works
+Allow: /legal/
+Disallow: /dashboard
+Disallow: /account
+Disallow: /admin
+Disallow: /drills
+Disallow: /databases
+Disallow: /reports
+Disallow: /v1/
+Disallow: /webhooks/
+Disallow: /login
+Disallow: /signup
+Disallow: /verify-email
+Disallow: /invitations/
+`))
 }
 
 // postmarkBounce is Postmark's inbound bounce/complaint webhook. The {token}

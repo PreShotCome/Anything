@@ -34,9 +34,15 @@ func Render(out io.Writer, d Data) error {
 	pdf.Ln(12)
 
 	pdf.SetFont("Helvetica", "", 10)
-	verdict := "PASSED"
-	if d.Drill.Status != drill.StatusSucceeded {
-		verdict = "FAILED"
+	verdict := "FAILED"
+	switch d.Drill.Status {
+	case drill.StatusSucceeded:
+		verdict = "PASSED"
+	case drill.StatusSkipped:
+		// A skipped drill (e.g. a scheduled run blocked by a lapsed trial)
+		// is neither pass nor fail — flagging it FAILED in the evidence
+		// PDF would scare an auditor reading the trail.
+		verdict = "SKIPPED"
 	}
 	pdf.SetFont("Helvetica", "B", 12)
 	pdf.CellFormat(0, 7, "Verdict: "+verdict, "", 1, "L", false, 0, "")

@@ -9,6 +9,7 @@ package oauth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -32,10 +33,12 @@ type Provider interface {
 	// Name is the URL slug ("google", "github").
 	Name() string
 	// AuthCodeURL is where the user is sent to authorize, carrying a CSRF
-	// state and the callback redirect URI.
-	AuthCodeURL(state, redirectURI string) string
-	// Identity exchanges an authorization code for the user's email.
-	Identity(ctx context.Context, code, redirectURI string) (Identity, error)
+	// state, a PKCE S256 challenge, and the callback redirect URI.
+	AuthCodeURL(state, codeChallenge, redirectURI string) string
+	// Identity exchanges an authorization code for the user's email,
+	// presenting the PKCE code_verifier that matches the challenge from
+	// AuthCodeURL.
+	Identity(ctx context.Context, code, codeVerifier, redirectURI string) (Identity, error)
 }
 
 // State returns a random URL-safe CSRF state token for the OAuth flow.
@@ -45,6 +48,23 @@ func State() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// PKCEVerifier mints a high-entropy code_verifier (RFC 7636 §4.1). It must
+// be stored alongside the state cookie at /start and presented at the
+// token-exchange step on /callback.
+func PKCEVerifier() (string, error) {
+	b := make([]byte, 32) // 256 bits — well above the 43-char minimum
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// PKCEChallenge derives the S256 code_challenge from a code_verifier.
+func PKCEChallenge(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 // provider is the shared OAuth-code-flow implementation; the per-provider
@@ -63,19 +83,21 @@ type provider struct {
 
 func (p *provider) Name() string { return p.name }
 
-func (p *provider) AuthCodeURL(state, redirectURI string) string {
+func (p *provider) AuthCodeURL(state, codeChallenge, redirectURI string) string {
 	q := url.Values{
-		"client_id":     {p.clientID},
-		"redirect_uri":  {redirectURI},
-		"response_type": {"code"},
-		"scope":         {p.scope},
-		"state":         {state},
+		"client_id":             {p.clientID},
+		"redirect_uri":          {redirectURI},
+		"response_type":         {"code"},
+		"scope":                 {p.scope},
+		"state":                 {state},
+		"code_challenge":        {codeChallenge},
+		"code_challenge_method": {"S256"},
 	}
 	return p.authURL + "?" + q.Encode()
 }
 
-func (p *provider) Identity(ctx context.Context, code, redirectURI string) (Identity, error) {
-	token, err := p.exchange(ctx, code, redirectURI)
+func (p *provider) Identity(ctx context.Context, code, codeVerifier, redirectURI string) (Identity, error) {
+	token, err := p.exchange(ctx, code, codeVerifier, redirectURI)
 	if err != nil {
 		return Identity{}, err
 	}
@@ -86,14 +108,17 @@ func (p *provider) Identity(ctx context.Context, code, redirectURI string) (Iden
 	return p.parseEmail(body)
 }
 
-// exchange swaps an authorization code for an access token.
-func (p *provider) exchange(ctx context.Context, code, redirectURI string) (string, error) {
+// exchange swaps an authorization code for an access token. The PKCE
+// code_verifier binds this exchange to the /start that minted the state —
+// a stolen authorization code cannot be redeemed without it.
+func (p *provider) exchange(ctx context.Context, code, codeVerifier, redirectURI string) (string, error) {
 	form := url.Values{
 		"client_id":     {p.clientID},
 		"client_secret": {p.clientSecret},
 		"code":          {code},
 		"redirect_uri":  {redirectURI},
 		"grant_type":    {"authorization_code"},
+		"code_verifier": {codeVerifier},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.tokenURL,
 		strings.NewReader(form.Encode()))

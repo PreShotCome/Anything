@@ -69,13 +69,25 @@ func (h *Handlers) adminSSOStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not start verification", http.StatusInternalServerError)
 		return
 	}
+	verifier, err := oauth.PKCEVerifier()
+	if err != nil {
+		http.Error(w, "could not start verification", http.StatusInternalServerError)
+		return
+	}
+	cookieValue, err := encodeOAuthState(oauthStateValue{State: state, Verifier: verifier})
+	if err != nil {
+		http.Error(w, "could not start verification", http.StatusInternalServerError)
+		return
+	}
 	http.SetCookie(w, &http.Cookie{
-		Name: oauthStateCookie, Value: state, Path: "/",
+		Name: staffOAuthStateCookie, Value: cookieValue, Path: "/",
 		MaxAge: 600, HttpOnly: true, Secure: h.secureCookies, SameSite: http.SameSiteLaxMode,
 	})
 	http.SetCookie(w, &http.Cookie{
 		Name: staffSSOCookie, Value: "1", Path: "/",
 		MaxAge: 600, HttpOnly: true, Secure: h.secureCookies, SameSite: http.SameSiteLaxMode,
 	})
-	http.Redirect(w, r, prov.AuthCodeURL(state, h.oauthCallbackURL(r, staffSSOProvider)), http.StatusSeeOther)
+	http.Redirect(w, r,
+		prov.AuthCodeURL(state, oauth.PKCEChallenge(verifier), h.oauthCallbackURL(r, staffSSOProvider)),
+		http.StatusSeeOther)
 }

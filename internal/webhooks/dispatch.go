@@ -44,15 +44,25 @@ func (d *Dispatcher) Dispatch(ctx context.Context, accountID uuid.UUID, event st
 		return fmt.Errorf("marshal payload: %w", err)
 	}
 
-	// A stable key per (event, source object) makes a retried fan-out
-	// idempotent: re-dispatching reuses the same delivery rows and — via
-	// River's by-args uniqueness — the same jobs, instead of double-sending.
-	// Events without an identifiable source object fall back to a unique key
-	// (no dedup).
-	eventKey := event + "|" + uuid.NewString()
-	if id, ok := data["drill_id"].(string); ok && id != "" {
-		eventKey = event + "|" + id
+	// A stable key per (event, source object, fan-out instance) makes a
+	// retried fan-out idempotent: re-dispatching reuses the same delivery
+	// rows and — via River's by-args uniqueness — the same jobs, instead
+	// of double-sending. Adding the random suffix per Dispatch call means
+	// two semantically-distinct events that happen to share a drill ID
+	// (e.g. drill.failed from assertion vs from teardown) get distinct
+	// keys; and a manual replay after River's uniqueness window expires
+	// gets a fresh key too, so the dedup table records both.
+	sourceID := ""
+	switch v := data["drill_id"].(type) {
+	case string:
+		sourceID = v
+	case uuid.UUID:
+		sourceID = v.String()
 	}
+	if sourceID == "" {
+		sourceID = uuid.NewString()
+	}
+	eventKey := event + "|" + sourceID + "|" + uuid.NewString()
 
 	for _, e := range endpoints {
 		deliveryID, err := d.store.CreateDelivery(ctx, e.ID, accountID, event, eventKey, payload)
