@@ -1,7 +1,17 @@
 name: deploy
 
 # Deploy to Fly.io automatically once CI passes on main. The deploy job
-# runs only when the `ci` workflow for the same commit succeeded.
+# runs only when (a) the `ci` workflow for the same commit succeeded AND
+# (b) the repo opt-in variable DEPLOY_ENABLED is set to "true".
+#
+# Pre-launch the variable is unset, so this workflow no-ops on every
+# push — keeping the Actions tab clean while Fly isn't provisioned yet.
+# To flip it on:
+#   1) fly apps create soteria  (and fly volumes create ..., per docs/runbooks/go-live.md)
+#   2) fly tokens create deploy  → paste as repo secret FLY_API_TOKEN
+#      (Settings → Secrets and variables → Actions → Secrets tab)
+#   3) Set repo variable DEPLOY_ENABLED=true
+#      (Settings → Secrets and variables → Actions → Variables tab)
 on:
   workflow_run:
     workflows: ["ci"]
@@ -10,7 +20,7 @@ on:
 
 jobs:
   deploy:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     # Never let two deploys overlap; let an in-flight one finish.
     concurrency:
