@@ -203,3 +203,50 @@ func (h *Handlers) v1GetEvidence(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="soteria-`+d.ID.String()+`.pdf"`)
 	_, _ = w.Write(body)
 }
+
+// apiSignature is the detached signature shape served over the API: the
+// fields a third-party verifier (soteria-verify) needs to re-prove the
+// PDF, plus a retention horizon so the customer knows the window.
+type apiSignature struct {
+	Algorithm   string    `json:"algorithm"`
+	PublicKeyID string    `json:"public_key_id"`
+	Value       string    `json:"value"`        // base64 Ed25519 signature
+	PDFSHA256   string    `json:"pdf_sha256"`   // hex digest the signature covers
+	SignedAt    time.Time `json:"signed_at"`
+	RetainUntil time.Time `json:"retain_until"`
+}
+
+// v1GetSignature returns the detached signature record for a drill as
+// JSON. Pair the bytes with the evidence PDF (/drills/{id}/evidence)
+// and feed both to `soteria-verify` along with the published public
+// key — the verifier needs no Soteria-specific code.
+func (h *Handlers) v1GetSignature(w http.ResponseWriter, r *http.Request) {
+	acct, _ := auth.CurrentAccountFromContext(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not_found", "drill not found")
+		return
+	}
+	// Authorize: drill must belong to the authenticated account.
+	if _, err := h.drills.GetDrill(r.Context(), acct.ID, id); err != nil {
+		writeAPIError(w, http.StatusNotFound, "not_found", "drill not found")
+		return
+	}
+	rec, err := h.evidence.GetSignature(r.Context(), id)
+	if errors.Is(err, evidence.ErrNoSignature) {
+		writeAPIError(w, http.StatusNotFound, "no_signature", "signature not yet recorded for this drill")
+		return
+	}
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal", "could not load signature")
+		return
+	}
+	writeData(w, http.StatusOK, apiSignature{
+		Algorithm:   rec.Algorithm,
+		PublicKeyID: rec.PublicKeyID,
+		Value:       rec.Value,
+		PDFSHA256:   rec.PDFSHA256,
+		SignedAt:    rec.SignedAt,
+		RetainUntil: rec.RetainUntil,
+	}, nil)
+}

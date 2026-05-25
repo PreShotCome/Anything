@@ -443,6 +443,30 @@ func (q pgxQuerier) QueryRow(ctx context.Context, sql string, args ...any) inter
 	return q.conn.QueryRow(ctx, sql, args...)
 }
 
+func (q pgxQuerier) Query(ctx context.Context, sql string, args ...any) (assertions.Rows, error) {
+	rows, err := q.conn.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return pgxRows{rows: rows}, nil
+}
+
+// pgxRows narrows pgx.Rows to the minimal surface assertions.Rows needs.
+type pgxRows struct{ rows pgx.Rows }
+
+func (r pgxRows) Next() bool                  { return r.rows.Next() }
+func (r pgxRows) Values() ([]any, error)      { return r.rows.Values() }
+func (r pgxRows) Err() error                  { return r.rows.Err() }
+func (r pgxRows) Close()                      { r.rows.Close() }
+func (r pgxRows) FieldDescriptions() []assertions.FieldDescription {
+	fds := r.rows.FieldDescriptions()
+	out := make([]assertions.FieldDescription, len(fds))
+	for i, f := range fds {
+		out[i] = assertions.FieldDescription{Name: string(f.Name)}
+	}
+	return out
+}
+
 func (w *AssertWorker) Timeout(*river.Job[drill.AssertArgs]) time.Duration {
 	return 5 * time.Minute
 }
