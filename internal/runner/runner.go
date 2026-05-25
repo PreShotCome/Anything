@@ -44,10 +44,17 @@ type Runner interface {
 
 	// Restore applies the dump at localPath into the sandbox database.
 	//
+	// Returns the combined stdout+stderr of the subprocess (pg_restore /
+	// psql) so the step worker can capture it as evidence. The bytes are
+	// persisted with a SHA-256 hash so the snippet that lives in the
+	// signed PDF is tamper-evident even when truncated. An err that is
+	// not nil means the restore failed; the output still contains
+	// whatever the tool wrote before the failure.
+	//
 	// Assertions are *not* part of the Runner contract: the assert step dials
 	// Sandbox.DSN directly and runs each configured check via the assertions
 	// package, so the runner stays a pure provision/restore/teardown surface.
-	Restore(ctx context.Context, sb *Sandbox, localPath string) error
+	Restore(ctx context.Context, sb *Sandbox, localPath string) (output []byte, err error)
 
 	// Rehydrate reconstructs a Sandbox handle from a drill ID and the bare
 	// sandbox database name persisted on the drill row — used by step workers

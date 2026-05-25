@@ -58,7 +58,7 @@ func TestRestoreFormats(t *testing.T) {
 			if len(srcHash) != 64 {
 				t.Fatalf("expected 64-char hex SHA-256, got %q", srcHash)
 			}
-			if err := r.Restore(ctx, sb, path); err != nil {
+			if _, err := r.Restore(ctx, sb, path); err != nil {
 				t.Fatalf("restore: %v", err)
 			}
 

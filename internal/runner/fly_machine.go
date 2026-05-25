@@ -88,7 +88,7 @@ func (r *FlyMachineRunner) Fetch(_ context.Context, _ *Sandbox, sourceURI string
 	return fetchDump(sourceURI)
 }
 
-func (r *FlyMachineRunner) Restore(ctx context.Context, sb *Sandbox, localPath string) error {
+func (r *FlyMachineRunner) Restore(ctx context.Context, sb *Sandbox, localPath string) ([]byte, error) {
 	return restoreDump(ctx, sb.DSN, localPath)
 }
 

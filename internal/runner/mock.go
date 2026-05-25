@@ -153,16 +153,17 @@ const (
 //   - plain SQL    — applied with psql
 //   - custom / tar — applied with pg_restore (it auto-detects either)
 //   - directory    — applied with pg_restore reading the directory
-func (r *LocalRunner) Restore(ctx context.Context, sb *Sandbox, localPath string) error {
+func (r *LocalRunner) Restore(ctx context.Context, sb *Sandbox, localPath string) ([]byte, error) {
 	return restoreDump(ctx, sb.DSN, localPath)
 }
 
 // restoreDump loads a dump into the database at dsn, picking psql or
-// pg_restore from the detected format. Shared by the local and Fly runners.
-func restoreDump(ctx context.Context, dsn, localPath string) error {
+// pg_restore from the detected format. Returns the combined output
+// (stdout+stderr) of the restore subprocess for evidence capture.
+func restoreDump(ctx context.Context, dsn, localPath string) ([]byte, error) {
 	format, err := detectDumpFormat(localPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// Preflight: the restore shells out to a PostgreSQL client binary. A
 	// missing binary is an operator-environment problem, not a bad dump, so
@@ -172,7 +173,7 @@ func restoreDump(ctx context.Context, dsn, localPath string) error {
 		tool = "psql"
 	}
 	if _, err := exec.LookPath(tool); err != nil {
-		return fmt.Errorf("%s is required to restore this dump but was not "+
+		return nil, fmt.Errorf("%s is required to restore this dump but was not "+
 			"found on PATH — install the PostgreSQL client tools (which "+
 			"provide psql and pg_restore) and ensure their bin directory is "+
 			"on PATH", tool)
@@ -250,7 +251,7 @@ func (r *LocalRunner) execAdmin(ctx context.Context, sql string) error {
 	return err
 }
 
-func runDumpCmd(cmd *exec.Cmd, name string) error {
+func runDumpCmd(cmd *exec.Cmd, name string) ([]byte, error) {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		// Surface the first ~1KB of output; full restore logs can be huge.
@@ -258,9 +259,9 @@ func runDumpCmd(cmd *exec.Cmd, name string) error {
 		if len(s) > 1024 {
 			s = s[:1024] + "...(truncated)"
 		}
-		return fmt.Errorf("%s failed: %w: %s", name, err, s)
+		return out, fmt.Errorf("%s failed: %w: %s", name, err, s)
 	}
-	return nil
+	return out, nil
 }
 
 // swapDatabase returns a copy of dsn with its database name replaced. It

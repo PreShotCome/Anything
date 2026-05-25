@@ -170,11 +170,30 @@ func stepsTable(pdf *fpdf.Fpdf, steps []drill.Step) {
 			string(s.Name), string(s.Status),
 			fmtTime(s.StartedAt), fmtTime(s.CompletedAt),
 			duration(s.StartedAt, s.CompletedAt),
+			outputDigest(s.OutputSHA256, s.OutputTruncated),
 		})
 	}
-	table(pdf, []float64{45, 25, 40, 40, 30},
-		[]string{"Name", "Status", "Started", "Completed", "Duration"},
+	table(pdf, []float64{32, 22, 38, 38, 22, 28},
+		[]string{"Name", "Status", "Started", "Completed", "Duration", "Output SHA-256"},
 		rows, "(no steps recorded)")
+}
+
+// outputDigest renders the first 12 hex chars of the captured-output
+// hash (plus a "…" + a "truncated" mark when the snippet was clipped),
+// or a dash when the step produced no output. Full hash is available via
+// GET /v1/drills/{id}/logs — the PDF column is intentionally a glance.
+func outputDigest(sha *string, truncated *bool) string {
+	if sha == nil || *sha == "" {
+		return "—"
+	}
+	short := *sha
+	if len(short) > 12 {
+		short = short[:12] + "…"
+	}
+	if truncated != nil && *truncated {
+		return short + " (snippet truncated)"
+	}
+	return short
 }
 
 func assertionsTable(pdf *fpdf.Fpdf, ars []drill.AssertionResult) {

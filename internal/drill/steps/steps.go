@@ -337,8 +337,16 @@ func (w *RestoreWorker) Work(ctx context.Context, job *river.Job[drill.RestoreAr
 	if err != nil {
 		return err // transient store read — let River retry
 	}
-	if err := w.D.Runner.Restore(ctx, sb, job.Args.FilePath); err != nil {
-		return w.D.failAndCleanup(ctx, drillID, drill.StepRestore, err.Error())
+	output, restoreErr := w.D.Runner.Restore(ctx, sb, job.Args.FilePath)
+	// Persist the captured output regardless of pass/fail — a failed
+	// restore's output is the most important evidence of WHY it failed.
+	if logErr := w.D.Store.SetStepOutput(ctx, drillID, drill.StepRestore, output); logErr != nil {
+		// Best-effort; don't fail the step on a logging blip.
+		// The signed PDF will simply omit the snippet.
+		_ = logErr
+	}
+	if restoreErr != nil {
+		return w.D.failAndCleanup(ctx, drillID, drill.StepRestore, restoreErr.Error())
 	}
 
 	if err := w.D.Store.MarkStepSucceeded(ctx, drillID, drill.StepRestore); err != nil {

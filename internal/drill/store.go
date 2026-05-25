@@ -4,6 +4,8 @@ package drill
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -11,6 +13,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// hexEncode is a local alias so the call site in SetStepOutput reads
+// concisely; hex.EncodeToString is the only consumer.
+func hexEncode(b []byte) string { return hex.EncodeToString(b) }
 
 // StepName enumerates the seven-step workflow. Slice order matters: it
 // defines the execution order the orchestrator enqueues.
@@ -98,6 +104,14 @@ type Step struct {
 	Error          *string
 	IdempotencyKey string
 	Ordinal        int
+	// OutputSnippet / OutputSHA256 / OutputTruncated capture stdout+stderr
+	// of any subprocess the step ran (today: only restore). The snippet is
+	// what lives in the signed PDF; the hash covers the *full* output so a
+	// holder of the original dump can re-run the same tool and confirm
+	// the snippet is a true prefix.
+	OutputSnippet   *string
+	OutputSHA256    *string
+	OutputTruncated *bool
 }
 
 type AssertionResult struct {
@@ -534,10 +548,12 @@ func (s *Store) CreateStepIfMissing(ctx context.Context, drillID uuid.UUID, name
 		INSERT INTO drill_steps (drill_id, name, ordinal, idempotency_key)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (drill_id, name) DO UPDATE SET name = EXCLUDED.name
-		RETURNING id, drill_id, name, status, started_at, completed_at, error, idempotency_key, ordinal
+		RETURNING id, drill_id, name, status, started_at, completed_at, error, idempotency_key, ordinal,
+		       output_snippet, output_sha256, output_truncated
 	`, drillID, name, ordinal, idemKey).Scan(
 		&step.ID, &step.DrillID, &step.Name, &step.Status,
 		&step.StartedAt, &step.CompletedAt, &step.Error, &step.IdempotencyKey, &step.Ordinal,
+			&step.OutputSnippet, &step.OutputSHA256, &step.OutputTruncated,
 	)
 	return step, err
 }
@@ -545,11 +561,13 @@ func (s *Store) CreateStepIfMissing(ctx context.Context, drillID uuid.UUID, name
 func (s *Store) GetStep(ctx context.Context, drillID uuid.UUID, name StepName) (Step, error) {
 	var step Step
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, drill_id, name, status, started_at, completed_at, error, idempotency_key, ordinal
+		SELECT id, drill_id, name, status, started_at, completed_at, error, idempotency_key, ordinal,
+		       output_snippet, output_sha256, output_truncated
 		  FROM drill_steps WHERE drill_id = $1 AND name = $2
 	`, drillID, name).Scan(
 		&step.ID, &step.DrillID, &step.Name, &step.Status,
 		&step.StartedAt, &step.CompletedAt, &step.Error, &step.IdempotencyKey, &step.Ordinal,
+			&step.OutputSnippet, &step.OutputSHA256, &step.OutputTruncated,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Step{}, ErrNotFound
@@ -559,7 +577,8 @@ func (s *Store) GetStep(ctx context.Context, drillID uuid.UUID, name StepName) (
 
 func (s *Store) ListSteps(ctx context.Context, drillID uuid.UUID) ([]Step, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, drill_id, name, status, started_at, completed_at, error, idempotency_key, ordinal
+		SELECT id, drill_id, name, status, started_at, completed_at, error, idempotency_key, ordinal,
+		       output_snippet, output_sha256, output_truncated
 		  FROM drill_steps WHERE drill_id = $1 ORDER BY ordinal ASC
 	`, drillID)
 	if err != nil {
@@ -584,6 +603,35 @@ func (s *Store) MarkStepRunning(ctx context.Context, drillID uuid.UUID, name Ste
 		   SET status = 'running', started_at = COALESCE(started_at, now())
 		 WHERE drill_id = $1 AND name = $2 AND status IN ('pending','running','failed')
 	`, drillID, name)
+	return err
+}
+
+// stepOutputCap is how many bytes of stdout+stderr we persist per step
+// (16 KiB). Enough to fit a typical pg_restore log; small enough that a
+// failed-drill blast cannot wedge the database.
+const stepOutputCap = 16 * 1024
+
+// SetStepOutput records the subprocess output a step produced. Truncates
+// the snippet at 16 KiB and stores the full-output SHA-256 alongside so
+// the snippet (and the corresponding PDF row) is tamper-evident even
+// when shorter than the real output.
+func (s *Store) SetStepOutput(ctx context.Context, drillID uuid.UUID, name StepName, output []byte) error {
+	if len(output) == 0 {
+		return nil
+	}
+	sum := sha256.Sum256(output)
+	hex := hexEncode(sum[:])
+	snippet := output
+	truncated := false
+	if len(snippet) > stepOutputCap {
+		snippet = snippet[:stepOutputCap]
+		truncated = true
+	}
+	_, err := s.pool.Exec(ctx, `
+		UPDATE drill_steps
+		   SET output_snippet = $3, output_sha256 = $4, output_truncated = $5
+		 WHERE drill_id = $1 AND name = $2
+	`, drillID, name, string(snippet), hex, truncated)
 	return err
 }
 

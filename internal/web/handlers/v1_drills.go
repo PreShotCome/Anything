@@ -59,6 +59,16 @@ type apiStep struct {
 	Error       *string    `json:"error"`
 }
 
+// apiStepLog is one row of GET /v1/drills/{id}/logs — the captured
+// stdout+stderr of a step's subprocess (today: only restore).
+type apiStepLog struct {
+	Step         string  `json:"step"`
+	Snippet      *string `json:"snippet"`
+	SHA256       *string `json:"sha256"`         // hash of the FULL output, not the snippet
+	Truncated    *bool   `json:"truncated"`      // true when snippet < full output
+	SnippetBytes int     `json:"snippet_bytes"`
+}
+
 type apiAssertionResult struct {
 	Kind     string          `json:"kind"`
 	Expected json.RawMessage `json:"expected"`
@@ -214,6 +224,46 @@ type apiSignature struct {
 	PDFSHA256   string    `json:"pdf_sha256"`   // hex digest the signature covers
 	SignedAt    time.Time `json:"signed_at"`
 	RetainUntil time.Time `json:"retain_until"`
+}
+
+// v1GetLogs returns the captured subprocess output for each step of a
+// drill — today only the restore step produces output. Each row carries
+// a snippet, the SHA-256 of the FULL output (not the snippet), and a
+// truncated flag. The hash lets an auditor re-run the same tool against
+// the same dump and verify the snippet is a true prefix.
+func (h *Handlers) v1GetLogs(w http.ResponseWriter, r *http.Request) {
+	acct, _ := auth.CurrentAccountFromContext(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeAPIError(w, http.StatusNotFound, "not_found", "drill not found")
+		return
+	}
+	if _, err := h.drills.GetDrill(r.Context(), acct.ID, id); err != nil {
+		writeAPIError(w, http.StatusNotFound, "not_found", "drill not found")
+		return
+	}
+	steps, err := h.drills.ListSteps(r.Context(), id)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal", "could not load steps")
+		return
+	}
+	logs := make([]apiStepLog, 0, len(steps))
+	for _, s := range steps {
+		if s.OutputSnippet == nil && s.OutputSHA256 == nil {
+			continue
+		}
+		entry := apiStepLog{
+			Step:      string(s.Name),
+			Snippet:   s.OutputSnippet,
+			SHA256:    s.OutputSHA256,
+			Truncated: s.OutputTruncated,
+		}
+		if s.OutputSnippet != nil {
+			entry.SnippetBytes = len(*s.OutputSnippet)
+		}
+		logs = append(logs, entry)
+	}
+	writeData(w, http.StatusOK, logs, nil)
 }
 
 // v1GetSignature returns the detached signature record for a drill as
